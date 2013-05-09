@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
  * BFQ-v7r8 for 3.10.8+: data structures and common functions prototypes.
+=======
+ * BFQ-v7r8 for 3.18.0: data structures and common functions prototypes.
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
  *
  * Based on ideas and code from CFQ:
  * Copyright (C) 2003 Jens Axboe <axboe@kernel.dk>
@@ -218,12 +222,17 @@ struct bfq_group;
  *                      idle @bfq_queue with no outstanding requests, then
  *                      the task associated with the queue it is deemed as
  *                      soft real-time (see the comments to the function
+<<<<<<< HEAD
  *                      bfq_bfqq_softrt_next_start())
+=======
+ *                      bfq_bfqq_softrt_next_start()).
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
  * @last_idle_bklogged: time of the last transition of the @bfq_queue from
  *                      idle to backlogged
  * @service_from_backlogged: cumulative service received from the @bfq_queue
  *                           since the last transition from idle to
  *                           backlogged
+<<<<<<< HEAD
  * @bic: pointer to the bfq_io_cq owning the bfq_queue, set to %NULL if the
  *	 queue is shared
  *
@@ -233,6 +242,14 @@ struct bfq_group;
  * does not disappear while a bfqq still references it (mostly to avoid
  * races between request issuing and task migration followed by cgroup
  * destruction).
+=======
+ *
+ * A bfq_queue is a leaf request queue; it can be associated with an io_context
+ * or more, if it is async or shared between cooperating processes. @cgroup
+ * holds a reference to the cgroup, to be sure that it does not disappear while
+ * a bfqq still references it (mostly to avoid races between request issuing and
+ * task migration followed by cgroup destruction).
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
  * All the fields are protected by the queue lock of the containing bfqd.
  */
 struct bfq_queue {
@@ -272,7 +289,10 @@ struct bfq_queue {
 	unsigned int requests_within_timer;
 
 	pid_t pid;
+<<<<<<< HEAD
 	struct bfq_io_cq *bic;
+=======
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 
 	/* weight-raising fields */
 	unsigned long wr_cur_max_time;
@@ -302,6 +322,7 @@ struct bfq_ttime {
  * @icq: associated io_cq structure
  * @bfqq: array of two process queues, the sync and the async
  * @ttime: associated @bfq_ttime struct
+<<<<<<< HEAD
  * @wr_time_left: snapshot of the time left before weight raising ends
  *                for the sync queue associated to this process; this
  *		  snapshot is taken to remember this value while the weight
@@ -322,12 +343,15 @@ struct bfq_ttime {
  *                by any of the process' @bfq_queues
  * @failed_cooperations: counter of consecutive failed queue merges of any
  *                       of the process' @bfq_queues
+=======
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
  */
 struct bfq_io_cq {
 	struct io_cq icq; /* must be the first member */
 	struct bfq_queue *bfqq[2];
 	struct bfq_ttime ttime;
 	int ioprio;
+<<<<<<< HEAD
 
 	unsigned int wr_time_left;
 	bool saved_idle_window;
@@ -338,6 +362,8 @@ struct bfq_io_cq {
 
 	unsigned int cooperations;
 	unsigned int failed_cooperations;
+=======
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 };
 
 enum bfq_device_speed {
@@ -570,7 +596,11 @@ enum bfqq_state_flags {
 	BFQ_BFQQ_FLAG_idle_window,	/* slice idling enabled */
 	BFQ_BFQQ_FLAG_sync,		/* synchronous queue */
 	BFQ_BFQQ_FLAG_budget_new,	/* no completion with this budget */
+<<<<<<< HEAD
 	BFQ_BFQQ_FLAG_IO_bound,		/*
+=======
+	BFQ_BFQQ_FLAG_IO_bound,         /*
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 					 * bfqq has timed-out at least once
 					 * having consumed at most 2/10 of
 					 * its budget
@@ -583,13 +613,21 @@ enum bfqq_state_flags {
 					 * bfqq has proved to be slow and
 					 * seeky until budget timeout
 					 */
+<<<<<<< HEAD
 	BFQ_BFQQ_FLAG_softrt_update,	/*
+=======
+	BFQ_BFQQ_FLAG_softrt_update,    /*
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 					 * may need softrt-next-start
 					 * update
 					 */
 	BFQ_BFQQ_FLAG_coop,		/* bfqq is shared */
+<<<<<<< HEAD
 	BFQ_BFQQ_FLAG_split_coop,	/* shared bfqq will be split */
 	BFQ_BFQQ_FLAG_just_split,	/* queue has just been split */
+=======
+	BFQ_BFQQ_FLAG_split_coop,	/* shared bfqq will be splitted */
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 };
 
 #define BFQ_BFQQ_FNS(name)						\
@@ -618,7 +656,10 @@ BFQ_BFQQ_FNS(in_large_burst);
 BFQ_BFQQ_FNS(constantly_seeky);
 BFQ_BFQQ_FNS(coop);
 BFQ_BFQQ_FNS(split_coop);
+<<<<<<< HEAD
 BFQ_BFQQ_FNS(just_split);
+=======
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 BFQ_BFQQ_FNS(softrt_update);
 #undef BFQ_BFQQ_FNS
 
@@ -695,6 +736,10 @@ struct bfq_group {
 /**
  * struct bfqio_cgroup - bfq cgroup data structure.
  * @css: subsystem state for bfq in the containing cgroup.
+<<<<<<< HEAD
+=======
+ * @online: flag marked when the subsystem is inserted.
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
  * @weight: cgroup weight.
  * @ioprio: cgroup ioprio.
  * @ioprio_class: cgroup ioprio_class.
@@ -706,6 +751,10 @@ struct bfq_group {
  */
 struct bfqio_cgroup {
 	struct cgroup_subsys_state css;
+<<<<<<< HEAD
+=======
+	bool online;
+>>>>>>> 9354f53... block: BFQ scheduling algorithm
 
 	unsigned short weight, ioprio, ioprio_class;
 
