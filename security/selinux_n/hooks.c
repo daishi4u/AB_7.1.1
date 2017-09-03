@@ -153,12 +153,13 @@ static int __init enforcing_setup(char *str)
 	if (!strict_strtoul(str, 0, &enforcing))
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enforcing = 1;
+		selinux_enforcing = 0;
 #else
-		selinux_enforcing = enforcing ? 1 : 0;
+		//selinux_enforcing = enforcing ? 1 : 0;
+		selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
-	return 1;
+	return 0;
 }
 __setup("enforcing=", enforcing_setup);
 #endif
@@ -172,12 +173,13 @@ static int __init selinux_enabled_setup(char *str)
 	if (!strict_strtoul(str, 0, &enabled))
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enabled = 1;
+		selinux_enabled = 0;
 #else
-		selinux_enabled = enabled ? 1 : 0;
+		//selinux_enabled = enabled ? 1 : 0;
+		selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
-	return 1;
+	return 0;
 }
 __setup("selinux=", selinux_enabled_setup);
 #else
@@ -5347,7 +5349,7 @@ static int selinux_nlmsg_perm(struct sock *sk, struct sk_buff *skb)
 				  nlh->nlmsg_type, sksec->sclass);
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-			if (security_get_allow_unknown())
+			if (!selinux_enforcing || security_get_allow_unknown())
 #else
 			if (!selinux_enforcing || security_get_allow_unknown())
 #endif
@@ -6770,7 +6772,7 @@ static __init int selinux_init(void)
 	if (!security_module_enable(&selinux_ops)) {
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enabled = 1;
+		selinux_enabled = 0;
 #else
 		selinux_enabled = 0;
 #endif
@@ -6802,7 +6804,7 @@ static __init int selinux_init(void)
 		panic("SELinux: Unable to register AVC netcache callback\n");
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enforcing = 1;
+	selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 	if (selinux_enforcing)
@@ -6883,7 +6885,7 @@ static int __init selinux_nf_ip_init(void)
 	int err = 0;
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enabled = 1;
+	selinux_enabled = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 	if (!selinux_enabled)

@@ -1,9 +1,9 @@
 #!/bin/bash
-export CROSS_COMPILE=../aarch64-linux-android-4.9/bin/aarch64-linux-gnu-
 
-#export CROSS_COMPILE=/opt/toolchains/arm-eabi-4.9/bin/aarch64-linux-android-
-export ARCH=arm64
+export ANDROID_VERSION=0
+export ANDROID_MAJOR_VERSION=7
+
+export CROSS_COMPILE=/home/brett/android/lineage/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 
 make j7elte_00_defconfig
-make -j64
-#24 2>&1 | tee -a  log.txt
+make -j4
