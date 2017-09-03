@@ -774,7 +774,7 @@ out:
 
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enforcing = 1;
+	selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 	if (!selinux_enforcing)
@@ -1538,7 +1538,7 @@ out:
 
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enforcing = 1;
+	selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 	if (!selinux_enforcing)
@@ -1834,7 +1834,7 @@ static inline int convert_context_handle_invalid_context(struct context *context
 
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enforcing = 1;
+	selinux_enforcing = 0;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 	if (selinux_enforcing)

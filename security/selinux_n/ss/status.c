@@ -60,7 +60,7 @@ struct page *selinux_kernel_status_page(void)
 			status->sequence = 0;
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-			status->enforcing = 1;
+			status->enforcing = 0;
 #else
 			status->enforcing = selinux_enforcing;
 #endif
