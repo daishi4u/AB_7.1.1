@@ -1,0 +1,20 @@
+#!/tmp/bootimgtools/tools/bash
+tooldir=/tmp/bootimgtools/tools
+box=$tooldir/busybox
+cd $tooldir/kernel/ramdisk
+
+# remove root
+$box rm /data/su.img
+$box rm /data/stock_boot_*.gz
+# the * should fix a root bug people are still having
+$box rm -rf /data/app/eu.chainfire.supersu*
+$box rm /data/dalvik-cache/profiles/eu.chainfire.supersu
+$box rm -rf /data/data/eu.chainfire.supersu
+$box rm /data/magisk.img
+$box rm -rf /data/magisk
+$box rm -rf /system/priv-app/MagiskManager
+$box rm -rf /data/data/com.topjohnwu.magisk
+$box rm -rf /data/app/com.topjohnwu.magisk*
+
+# just in case...let the system catch up
+sleep 1

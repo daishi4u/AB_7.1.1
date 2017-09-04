@@ -53,7 +53,7 @@
 #define MIN_COLD_VOLTAGE 	825000
 #define COLD_VOLT_OFFSET	37500
 // max frequency. 1700000 is as high as I could take the J7 without having reboot issues
-#define MY_MAX_FREQ         1600000
+#define MY_MAX_FREQ         1700000
 #define MY_MIN_FREQ         300000
 
 #define APLL_FREQ(f, a0, a1, a2, a3, a4, a5, a6, b0, b1, m, p, s) \
@@ -99,7 +99,7 @@ static struct {
 	 * PLL M, P, S
 	 */
 	//APLL_FREQ(1800000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 276, 4, 0),  // gives random reboots, probably caused by temp
-	//APLL_FREQ(1700000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 262, 4, 0),
+	APLL_FREQ(1700000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 262, 4, 0),
 	APLL_FREQ(1600000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 246, 4, 0),
 	APLL_FREQ(1500000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 230, 4, 0),
 	APLL_FREQ(1400000, 0, 0, 7, 7, 2, 7, 3, 7, 7, 216, 4, 0),
@@ -120,7 +120,7 @@ static struct {
 
 static unsigned int exynos_bus_table[] = {
 	//825000, /* 1.8GHz */
-	//825000, /* 1.7GHz */
+	825000, /* 1.7GHz */
 	825000, /* 1.6GHz */
 	825000, /* 1.5GHz */
 	825000, /* 1.4GHz */

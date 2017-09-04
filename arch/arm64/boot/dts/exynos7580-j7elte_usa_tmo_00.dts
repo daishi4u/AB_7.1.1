@@ -587,10 +587,16 @@
 		status = "okay";
 
 		touchkey@20 {
+<<<<<<< HEAD
 			pinctrl-names = "default","on_irq","off_irq";
 			pinctrl-0 = <&cfg_irq>;
 			pinctrl-1 = <&cfg_irq>;
 			pinctrl-2 = <&cfg_input>;
+=======
+			pinctrl-names = "on_irq","off_irq";
+			pinctrl-0 = <&cfg_irq>;
+			pinctrl-1 = <&cfg_input>;
+>>>>>>> b18acb2... Add the rest of the afterburner build system
 			compatible = "coreriver,tc300-keypad";
 			reg = <0x20>;
 			interrupts = <3 0 0>;
