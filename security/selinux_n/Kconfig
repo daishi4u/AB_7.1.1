@@ -92,7 +92,7 @@ config SECURITY_SELINUX_ENFORCING
 	int "NSA SELinux Enforcing default value"
 	depends on SECURITY_SELINUX && !SECURITY_SELINUX_DEVELOP
 	range 0 1
-	default 1
+	default 0
 	help
 	  This option sets the value of selinux_enforcing, permanently
 	  deciding whether the kernel should run in enforcing or
