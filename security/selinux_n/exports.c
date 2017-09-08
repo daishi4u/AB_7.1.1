@@ -21,7 +21,7 @@ bool selinux_is_enabled(void)
 {
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	return selinux_enabled;
+	return true;
 #else
 	return selinux_enabled;
 #endif
@@ -33,7 +33,7 @@ bool selinux_is_enforcing(void)
 {
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	return selinux_enforcing;
+	return true;
 #else
 	return selinux_enforcing;
 #endif

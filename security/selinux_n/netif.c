@@ -279,7 +279,7 @@ static __init int sel_netif_init(void)
 
 // [ SEC_SELINUX_PORTING_COMMON
 #ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enabled = 0;
+	selinux_enabled = 1;
 #endif
 // ] SEC_SELINUX_PORTING_COMMON
 
