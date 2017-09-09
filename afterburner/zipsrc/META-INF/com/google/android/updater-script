@@ -61,7 +61,6 @@ if file_getprop("/tmp/aroma/root.prop", "selected.0") == "1" then
 endif;
 if file_getprop("/tmp/aroma/root.prop", "selected.0") == "2" then
     ui_print("Installing MagiskSU...");
-    package_extract_dir("add-ons/root/magisk/priv-app", "/system/priv-app");
     package_extract_dir("add-ons/root/magisksu", "/tmp/bootimgtools/magisksu");
     run_program("/sbin/busybox", "unzip", "/tmp/bootimgtools/magisksu/magisksu.zip", "META-INF/com/google/android/*", "-d", "/tmp/bootimgtools/magisksu");
     run_program("/sbin/busybox", "sh", "/tmp/bootimgtools/magisksu/META-INF/com/google/android/update-binary", "dummy", "1", "/tmp/bootimgtools/magisksu/magisksu.zip");
