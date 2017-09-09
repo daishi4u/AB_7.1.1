@@ -98,10 +98,10 @@ theme("touchwiz");
 # Initializing Rom Information
 #
 ini_set("rom_name",             "Afterburner N kernel");
-ini_set("rom_version",          "2.0.0");
+ini_set("rom_version",          "2.0.1g");
 ini_set("rom_author",           "Brett Wagner");
-ini_set("rom_device",           "J7 2015");
-ini_set("rom_date",             "Sep, 7 2017");
+ini_set("rom_device",           "J7 2015 Nougat");
+ini_set("rom_date",             "Sep, 8 2017");
 
 
 ##

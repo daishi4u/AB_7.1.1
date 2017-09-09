@@ -112,26 +112,6 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
 
-config CPU_FREQ_DEFAULT_GOV_SMARTASS2
-  	bool "smartassV2"
-  	select CPU_FREQ_GOV_SMARTASS2
-  	help
-
-config CPU_FREQ_DEFAULT_GOV_HYPER
-  	bool "hyper"
-  	select CPU_FREQ_GOV_HYPER
-  	help
-
-config CPU_FREQ_DEFAULT_GOV_ZZMOOVE
-  	bool "zzmoove"
-  	select CPU_FREQ_GOV_ZZMOOVE
-  	help
-
-config CPU_FREQ_DEFAULT_GOV_LIONFISH
-  	bool "lionfish"
-  	select CPU_FREQ_GOV_LIONFISH
-  	help
-
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
@@ -206,30 +186,6 @@ config CPU_FREQ_GOV_INTERACTIVE
 	  For details, take a look at linux/Documentation/cpu-freq.
 
 	  If in doubt, say N.
-
-config CPU_FREQ_GOV_SMARTASS2
-  	tristate "'smartassV2' cpufreq governor"
-  	depends on CPU_FREQ
-  	help
-    	'smartassV2' - a "smart" governor
-
-config CPU_FREQ_GOV_HYPER
-  	tristate "'Hyper' cpufreq governor"
-  	depends on CPU_FREQ
-  	help
-    	'hyper' governor
-
-config CPU_FREQ_GOV_ZZMOOVE
-  	tristate "'zzmoove' cpufreq governor"
-  	depends on CPU_FREQ
-  	help
-    	'zzmoove' governor
-
-config CPU_FREQ_GOV_LIONFISH
-  	tristate "'lionfish' cpufreq governor"
-  	depends on CPU_FREQ
-  	help
-    	'lionfish' governor
 
 config CPU_FREQ_GOV_CONSERVATIVE
 	tristate "'conservative' cpufreq governor"

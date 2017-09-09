@@ -1427,3 +1427,4 @@ module_platform_driver(exynos_smp_platdrv);
 MODULE_AUTHOR("Jonghwan Choi <jhbird.choi@samsung.com>");
 MODULE_DESCRIPTION("Exynos SMP cpufreq driver via DT");
 MODULE_LICENSE("GPL");
+
