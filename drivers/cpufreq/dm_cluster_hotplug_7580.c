@@ -16,10 +16,11 @@ enum hstate {
 	H0,
 	H1,
 	H2,
-#ifndef CONFIG_EXYNOS7580_QUAD
 	H3,
 	H4,
-#endif
+	H5,
+	H6,
+	H7,
 	MAX_HSTATE,
 };
 
@@ -67,32 +68,39 @@ static struct hotplug_hstate hstate_set[] = {
 	},
 	[H1] = {
 		.name		= "H1",
-		.core_count	= (NR_CPUS * 3) / 4,
+		.core_count	= 7,
 		.state		= H1,
 	},
 	[H2] = {
 		.name		= "H2",
-		.core_count	= NR_CPUS / 2,
+		.core_count	= 6,
 		.state		= H2,
 	},
-#ifndef CONFIG_EXYNOS7580_QUAD
 	[H3] = {
 		.name		= "H3",
-		.core_count	= 2,
+		.core_count	= 5,
 		.state		= H3,
 	},
 	[H4] = {
 		.name		= "H4",
-		.core_count	= 1,
+		.core_count	= 4,
 		.state		= H4,
 	},
-#else
-	[H3] = {
-		.name		= "H3",
-		.core_count	= 1,
-		.state		= H3,
+	[H5] = {
+		.name		= "H5",
+		.core_count	= 3,
+		.state		= H5,
 	},
-#endif
+	[H6] = {
+		.name		= "H6",
+		.core_count	= 2,
+		.state		= H6,
+	},
+	[H7] = {
+		.name		= "H7",
+		.core_count	= 1,
+		.state		= H7,
+	},
 };
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
@@ -131,53 +139,21 @@ static int get_core_count(enum hstate state)
 		return hstate_set[H0].core_count;
 }
 
-static void __ref cluster_down(enum hstate state)
+static void __ref hotplug_cpu(enum hstate state)
 {
-	int i, cnt_old, cnt_target;
+	int i, cnt_target;
 
-	cnt_old = get_core_count(ctrl_hotplug.old_state);
 	cnt_target = get_core_count(state);
 
-	if (cnt_old > cnt_target) {	/* Hotplug out condition */
-		/* Check the Online CPU supposed to be online */
-		for (i = 0 ; i < cnt_target ; i++) {
-			if (!cpu_online(i))
-				cpu_up(i);
-		}
-		/* Hotplug out the target */
-		for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
-			if (cpu_online(i))
-				cpu_down(i);
-		}
-	} else {
-		/* Should not be here */
-		panic("Invalid Condition in cluster down");
+		/* Check the Online CPU supposed to be online or offline */
+	for (i = 0 ; i < cnt_target ; i++) {
+		if (!cpu_online(i))
+			cpu_up(i);
 	}
-}
-
-static void __ref cluster_up(enum hstate state)
-{
-	int i, cnt_old, cnt_target;
-
-	cnt_old = get_core_count(ctrl_hotplug.old_state);
-	cnt_target = get_core_count(state);
-
-	if (cnt_old < cnt_target) {	/* Hotplug in condition */
-		/* Turn on the Online CPU supposed to be online
-		 * And target CPU
-		 */
-		for (i = 0 ; i < cnt_target ; i++) {
-			if (!cpu_online(i))
-				cpu_up(i);
-		}
-		/* Check the offline CPU supposed to be offline */
-		for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
-			if (cpu_online(i))
-				cpu_down(i);
-		}
-	} else {
-		/* Should not be here */
-		panic("Invalid Condition in Cluster up");
+	/* Check the offline CPU supposed to be offline */
+	for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
+		if (cpu_online(i))
+			cpu_down(i);
 	}
 }
 
@@ -203,7 +179,6 @@ static s64 hotplug_update_time_status(void)
 static void hotplug_enter_hstate(bool force, enum hstate state)
 {
 	int min_state, max_state;
-	bool up = false;
 
 	if (ctrl_hotplug.suspended)
 		return;
@@ -213,8 +188,8 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 		max_state = ctrl_hotplug.max_lock;
 
 #ifndef CONFIG_EXYNOS7580_QUAD
-		if (lcd_on && (state > H3))
-			state = H3;
+		if (lcd_on && (state > H6))
+			state = H6;
 #else
 		if (lcd_on)
 			state = H0;
@@ -230,17 +205,11 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 	if (ctrl_hotplug.old_state == state)
 		return;
 
-	if (ctrl_hotplug.old_state > state)
-		up = true;
-
 	spin_lock(&hstate_status_lock);
 	hotplug_update_time_status();
 	spin_unlock(&hstate_status_lock);
 
-	if (up)
-		cluster_up(state);
-	else
-		cluster_down(state);
+	hotplug_cpu(state);
 
 	atomic_set(&freq_history[UP], 0);
 	atomic_set(&freq_history[DOWN], 0);
@@ -369,7 +338,7 @@ static enum hstate hotplug_adjust_state(enum action move)
 		    ctrl_hotplug.up_tasks >= nr)
 			return ctrl_hotplug.old_state;
 
-		state = ctrl_hotplug.old_state - 1;
+		state = ctrl_hotplug.old_state - 2;
 		if (state <= 0)
 			state = H0;
 	}
