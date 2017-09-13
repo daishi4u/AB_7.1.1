@@ -53,7 +53,7 @@
 #define MIN_COLD_VOLTAGE 	825000
 #define COLD_VOLT_OFFSET	37500
 // max frequency. 1700000 is as high as I could take the J7 without having reboot issues
-#define MY_MAX_FREQ         1700000
+#define MY_MAX_FREQ         1600000
 #define MY_MIN_FREQ         300000
 
 #define APLL_FREQ(f, a0, a1, a2, a3, a4, a5, a6, b0, b1, m, p, s) \

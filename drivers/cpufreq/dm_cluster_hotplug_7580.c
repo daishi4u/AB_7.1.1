@@ -106,17 +106,17 @@ static struct hotplug_hstate hstate_set[] = {
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = 100,		/* ms */
 	.down_freq = 800000,		/* MHz */
-	.up_freq = 1400000,		/* MHz */
+	.up_freq = 1300000,		/* MHz */
 	.up_threshold = 3,
 	.down_threshold = 3,
-	.up_tasks = 8,
-	.down_tasks = 6,
+	.up_tasks = 8, // 2 times online cpus
+	.down_tasks = 6, // 1.5 times online cpus
 	.force_hstate = -1,
 	.min_lock = -1,
 	.max_lock = -1,
 	.cur_hstate = H0,
 	.old_state = H0,
-	.down_freq_limit = 400000,
+	.down_freq_limit = 300000,
 };
 
 static DEFINE_MUTEX(hotplug_lock);
@@ -254,7 +254,7 @@ static enum action select_up_down(void)
 	int up_threshold, down_threshold;
 	unsigned int down_freq, up_freq;
 	unsigned int c0_freq, c1_freq;
-	int nr;
+	int nr, num_online;
 
 	nr = nr_running();
 
@@ -306,8 +306,10 @@ static enum action select_up_down(void)
 		return STAY;
 	}
 
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) &&
-	    (ctrl_hotplug.down_tasks >= nr)) {
+	num_online = get_core_count(ctrl_hotplug.cur_hstate);
+
+	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) ||
+	    ((num_online + num_online / 2) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
 	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
@@ -325,17 +327,17 @@ static enum action select_up_down(void)
 
 static enum hstate hotplug_adjust_state(enum action move)
 {
-	int state, nr;
+	int state, nr, num_online;
 
 	nr = nr_running();
+	num_online = get_core_count(ctrl_hotplug.cur_hstate);
 
 	if (move == DOWN) {
 		state = ctrl_hotplug.old_state + 1;
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
 	} else {
-		if (ctrl_hotplug.old_state == H1 &&
-		    ctrl_hotplug.up_tasks >= nr)
+		if (num_online * 2 >= nr)		// up_tasks / 4
 			return ctrl_hotplug.old_state;
 
 		state = ctrl_hotplug.old_state - 2;
