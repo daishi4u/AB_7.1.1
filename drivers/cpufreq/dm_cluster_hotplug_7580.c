@@ -254,7 +254,7 @@ static enum action select_up_down(void)
 	int up_threshold, down_threshold;
 	unsigned int down_freq, up_freq;
 	unsigned int c0_freq, c1_freq;
-	int nr, num_online;
+	int nr, num_online, d_tasks;
 
 	nr = nr_running();
 
@@ -298,16 +298,16 @@ static enum action select_up_down(void)
 		down_freq = ctrl_hotplug.down_freq;
 	}
 
-	if (((c0_freq < up_freq) && (c0_freq > down_freq)) ||
-	    ((c1_freq < up_freq && c1_freq > down_freq))) {
+	num_online = num_online_cpus();
+   d_tasks = num_online + (num_online / 2) + (num_online % 2));
+
+	if ((((c0_freq < up_freq) && (c0_freq > down_freq)) ||
+	    ((c1_freq < up_freq && c1_freq > down_freq))) && !(d_tasks >= nr)) {
 		atomic_set(&freq_history[UP], 0);
 		atomic_set(&freq_history[DOWN], 0);
 	}
 
-	num_online = num_online_cpus();
-
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) ||
-	    ((num_online + (num_online / 2) + (num_online % 2)) >= nr)) {		// down_tasks / 4
+	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || (d_tasks >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
 	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
