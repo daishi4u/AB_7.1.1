@@ -312,7 +312,7 @@ static enum action select_up_down(void)
 	    ((num_online + (num_online / 2) + (num_online % 2)) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if (((c0_freq >= up_freq) || (c1_freq >= up_freq)) && (num_online * 2 < nr)) {
+	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}
@@ -327,17 +327,20 @@ static enum action select_up_down(void)
 
 static enum hstate hotplug_adjust_state(enum action move)
 {
-	int state;
+	int state, nr, num_online;
+	nr = nr_running();
+   num_online = num_online_cpus();
+   state = ctrl_hotplug.old_state;
 
-	if (move == DOWN) {
-		state = ctrl_hotplug.old_state + 1;
+	if ((move == DOWN) || (num_online * 2 >= nr)) {
+		state++;
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
-	} else {
-		state = ctrl_hotplug.old_state - 2;
+	} else if (move != STAY){
+		state -= 2;
 		if (state <= 0)
 			state = H0;
-	}
+	} 
 
 	return state;
 }
@@ -734,6 +737,10 @@ err_fb:
 err_sys:
 	destroy_workqueue(khotplug_wq);
 err_wq:
+	return ret;
+}
+late_initcall(dm_cluster_hotplug_init);
+wq:
 	return ret;
 }
 late_initcall(dm_cluster_hotplug_init);
