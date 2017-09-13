@@ -309,7 +309,7 @@ static enum action select_up_down(void)
 	num_online = get_core_count(ctrl_hotplug.cur_hstate);
 
 	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) ||
-	    ((num_online + num_online / 2) >= nr)) {		// down_tasks / 4
+	    ((num_online + (num_online / 2) + (num_online % 2)) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
 	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
