@@ -740,7 +740,4 @@ err_wq:
 	return ret;
 }
 late_initcall(dm_cluster_hotplug_init);
-wq:
-	return ret;
-}
-late_initcall(dm_cluster_hotplug_init);
+
