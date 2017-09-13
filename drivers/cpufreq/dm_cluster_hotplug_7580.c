@@ -306,13 +306,13 @@ static enum action select_up_down(void)
 		return STAY;
 	}
 
-	num_online = get_core_count(ctrl_hotplug.cur_hstate);
+	num_online = num_online_cpus();
 
 	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) ||
 	    ((num_online + (num_online / 2) + (num_online % 2)) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
+	} else if (((c0_freq >= up_freq) || (c1_freq >= up_freq)) && (num_online * 2 < nr)) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}
@@ -327,19 +327,13 @@ static enum action select_up_down(void)
 
 static enum hstate hotplug_adjust_state(enum action move)
 {
-	int state, nr, num_online;
-
-	nr = nr_running();
-	num_online = get_core_count(ctrl_hotplug.cur_hstate);
+	int state;
 
 	if (move == DOWN) {
 		state = ctrl_hotplug.old_state + 1;
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
 	} else {
-		if (num_online * 2 >= nr)		// up_tasks / 4
-			return ctrl_hotplug.old_state;
-
 		state = ctrl_hotplug.old_state - 2;
 		if (state <= 0)
 			state = H0;
@@ -387,7 +381,7 @@ static int fb_state_change(struct notifier_block *nb,
 			lcd_on = false;
 			mutex_lock(&hotplug_lock);
 			if (ctrl_hotplug.force_hstate == -1) {
-				target_state = hotplug_adjust_state(DOWN);
+				target_state = H6;		// turn off all but 2 cores // hotplug_adjust_state(DOWN);
 				hotplug_enter_hstate(false, target_state);
 			}
 			mutex_unlock(&hotplug_lock);
@@ -396,11 +390,7 @@ static int fb_state_change(struct notifier_block *nb,
 			lcd_on = true;
 			mutex_lock(&hotplug_lock);
 			if (ctrl_hotplug.force_hstate == -1)
-#ifndef CONFIG_EXYNOS7580_QUAD
-				hotplug_enter_hstate(true, H1);
-#else
-				hotplug_enter_hstate(true, H0);
-#endif
+				hotplug_enter_hstate(true, H3);		// turn on 4 cores
 			mutex_unlock(&hotplug_lock);
 			break;
 		}
