@@ -302,8 +302,6 @@ static enum action select_up_down(void)
 	    ((c1_freq < up_freq && c1_freq > down_freq))) {
 		atomic_set(&freq_history[UP], 0);
 		atomic_set(&freq_history[DOWN], 0);
-
-		return STAY;
 	}
 
 	num_online = num_online_cpus();
@@ -327,12 +325,10 @@ static enum action select_up_down(void)
 
 static enum hstate hotplug_adjust_state(enum action move)
 {
-	int state, nr, num_online;
-	nr = nr_running();
-   num_online = num_online_cpus();
+	int state;
    state = ctrl_hotplug.old_state;
 
-	if ((move == DOWN) || (num_online * 2 >= nr)) {
+	if (move == DOWN) {
 		state++;
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
@@ -740,4 +736,3 @@ err_wq:
 	return ret;
 }
 late_initcall(dm_cluster_hotplug_init);
-
