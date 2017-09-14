@@ -141,11 +141,12 @@ static int get_core_count(enum hstate state)
 
 static void __ref hotplug_cpu(enum hstate state)
 {
-	int i, cnt_target;
+	int i, cnt_target, cpus;
 
 	cnt_target = get_core_count(state);
+	cpus = num_possible_cpus();
 
-		/* Check the Online CPU supposed to be online or offline */
+	/* Check the Online CPU supposed to be online or offline */
 	for (i = 0 ; i < cnt_target ; i++) {
 		if (!cpu_online(i))
 			cpu_up(i);
@@ -299,7 +300,7 @@ static enum action select_up_down(void)
 	}
 
 	num_online = num_online_cpus();
-   d_tasks = num_online + (num_online / 2) + (num_online % 2));
+	d_tasks = num_online + (num_online / 2) + (num_online % 2);
 
 	if ((((c0_freq < up_freq) && (c0_freq > down_freq)) ||
 	    ((c1_freq < up_freq && c1_freq > down_freq))) && !(d_tasks >= nr)) {
@@ -310,7 +311,7 @@ static enum action select_up_down(void)
 	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || (d_tasks >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq)) {
+	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * 2 ) < nr)) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}
@@ -326,7 +327,7 @@ static enum action select_up_down(void)
 static enum hstate hotplug_adjust_state(enum action move)
 {
 	int state;
-   state = ctrl_hotplug.old_state;
+	state = ctrl_hotplug.old_state;
 
 	if (move == DOWN) {
 		state++;
@@ -372,7 +373,6 @@ static int fb_state_change(struct notifier_block *nb,
 {
 	struct fb_event *evdata = data;
 	int *blank = evdata->data;
-	enum hstate target_state;
 
 	if (event == FB_EVENT_BLANK) {
 		switch (*blank) {
@@ -380,8 +380,7 @@ static int fb_state_change(struct notifier_block *nb,
 			lcd_on = false;
 			mutex_lock(&hotplug_lock);
 			if (ctrl_hotplug.force_hstate == -1) {
-				target_state = H6;		// turn off all but 2 cores // hotplug_adjust_state(DOWN);
-				hotplug_enter_hstate(false, target_state);
+				hotplug_enter_hstate(false, H6);	// turn off all but 2 cores // hotplug_adjust_state(DOWN);
 			}
 			mutex_unlock(&hotplug_lock);
 			break;
