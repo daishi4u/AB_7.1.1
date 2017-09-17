@@ -53,7 +53,7 @@
 #define MIN_COLD_VOLTAGE 	825000
 #define COLD_VOLT_OFFSET	37500
 // max frequency. 1700000 is as high as I could take the J7 without having reboot issues
-#define MY_MAX_FREQ         1600000
+#define MY_MAX_FREQ         1700000
 #define MY_MIN_FREQ         300000
 
 #define APLL_FREQ(f, a0, a1, a2, a3, a4, a5, a6, b0, b1, m, p, s) \
@@ -142,7 +142,7 @@ static unsigned int exynos_bus_table[] = {
 static unsigned int voltage_tolerance;	/* in percentage */
 static DEFINE_MUTEX(exynos_cpu_lock);
 static bool is_suspended;
-//static unsigned int sync_frequency;
+static unsigned int sync_frequency;
 static unsigned int locking_frequency;
 static unsigned int locking_volt;
 static unsigned int cold_offset;
@@ -451,10 +451,10 @@ static unsigned int exynos_verify_pm_qos_limit(int cluster, unsigned int freq)
 
 #ifndef CONFIG_EXYNOS7580_QUAD
 	/* If cluster1 is turned on, first freq should be higher than cluster 0 */
-	//if (sync_frequency && (cluster == CL_ONE)) {
-	//	target_freq = max(target_freq, sync_frequency);
-	//	sync_frequency = 0;
-	//}
+	if (sync_frequency && (cluster == CL_ONE)) {
+		target_freq = max(target_freq, sync_frequency);
+		sync_frequency = 0;
+	}
 #endif
 
 	return target_freq;
@@ -938,9 +938,9 @@ static int exynos_cpufreq_init(struct cpufreq_policy *policy)
 		locking_frequency = exynos_cpufreq_get(0);
 		register_pm_notifier(&exynos_cpu_pm_notifier);
 		register_reboot_notifier(&exynos_cpu_reboot_notifier);
-	} //else {
-	//	sync_frequency = exynos_cpufreq_get(0);
-	//}
+	} else {
+		sync_frequency = exynos_cpufreq_get(0);
+	}
 
 	dev_info(cpu_dev, "%s: CPU %d initialized\n", __func__, policy->cpu);
 	return 0;
