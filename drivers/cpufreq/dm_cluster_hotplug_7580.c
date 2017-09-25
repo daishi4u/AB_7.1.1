@@ -109,8 +109,8 @@ static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.up_freq = 1300000,		/* MHz */
 	.up_threshold = 3,
 	.down_threshold = 3,
-	.up_tasks = 8, // 2 times online cpus (4 cores online)
-	.down_tasks = 6, // .75 times online cpus (8 cores online)
+	.up_tasks = 2, // 2 times online cpus (4 cores online)
+	.down_tasks = 1, // 1 times online cpus (8 cores online)
 	.force_hstate = -1,
 	.min_lock = -1,
 	.max_lock = -1,
@@ -302,15 +302,15 @@ static enum action select_up_down(void)
 	num_online = num_online_cpus();
 
 	if ((((c0_freq < up_freq) && (c0_freq > down_freq)) ||
-	    ((c1_freq < up_freq && c1_freq > down_freq))) && !(num_online >= nr)) {
+	    ((c1_freq < up_freq && c1_freq > down_freq))) && !((num_online * ctrl_hotplug.down_tasks) >= nr)) {
 		atomic_set(&freq_history[UP], 0);
 		atomic_set(&freq_history[DOWN], 0);
 	}
 
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || (num_online >= nr)) {		// down_tasks / 4
+	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || ((num_online * ctrl_hotplug.down_tasks) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * 2 ) < nr)) {
+	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * ctrl_hotplug.up_tasks) < nr)) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}
