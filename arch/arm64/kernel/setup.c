@@ -554,7 +554,7 @@ static const char *compat_hwcap_str[] = {
 
 static int c_show(struct seq_file *m, void *v)
 {
-	int i, j;
+	int i;
 
 	for_each_online_cpu(i) {
 		struct cpuinfo_arm64 *cpuinfo = &per_cpu(cpu_data, i);

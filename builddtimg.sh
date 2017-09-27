@@ -36,9 +36,9 @@ rm $MYOUT/boot.img-ramdisk.gz
 # make the flashable zip new ramdisk
 cd $ABDIR/zipsrc
 
-zip -r afterburner-N-v.zip kernel/ bootimgtools/ add-ons/ META-INF/
+zip -r afterburner-N-v$1.zip kernel/ bootimgtools/ add-ons/ META-INF/
 
-mv afterburner-N-v.zip $ABDIR/out/
+mv afterburner-N-v$1.zip $ABDIR/out/
 rm $ABDIR/zipsrc/kernel/dt.img
 rm $ABDIR/zipsrc/kernel/zImage
 

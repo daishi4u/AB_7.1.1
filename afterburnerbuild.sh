@@ -2,4 +2,4 @@
 
 rm .version
 /bin/bash buildkernel.sh
-/bin/bash builddtimg.sh
+/bin/bash builddtimg.sh $1
