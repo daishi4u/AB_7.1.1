@@ -1135,10 +1135,17 @@
 		compatible = "samsung,usb-notifier";
 	};
 	pinctrl@139B0000 {
-			proximity_int: proximity-int {
+		acc_int: acc_int {
+			samsung,pins = "gpa1-0";
+			samsung,pins-function = <0x0>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <0>;
+		};
+		prox_int: prox_int {
 			samsung,pins = "gpa1-4";
-			samsung,pin-function = <0>;
+			samsung,pins-function = <0x0>;
 			samsung,pin-pud = <3>;
+			samsung,pin-drv = <0>;
 		};
 	};
 	hsi2c@13870000 {
@@ -1148,8 +1155,10 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		k2hh-i2c@1D {
-			compatible = "stm,k2hh-i2c";
+			compatible = "k2hh-i2c";
 			reg = <0x1D>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&acc_int>;
 			interrupt-parent = <&gpa1>;
 			interrupts = <0 0 0>;
 			k2hh,irq_gpio = <&gpa1 0 0>;
@@ -1167,16 +1176,18 @@
 			compatible = "cm36672p";
 			reg = <0x60>;
 			pinctrl-names = "default";
-			pinctrl-0 = <&proximity_int>;
+			pinctrl-0 = <&prox_int>;
 			interrupt-parent = <&gpa1>;
 			interrupts = <4 0 0>;
-			cm36672p,irq_gpio = <&gpa1 4 0>;
 			cm36672p,vdd-supply = <&sm5703_ldo2_reg>;
+			cm36672p,vdd_always_on = <1>;
 			cm36672p,vled-supply = <&ldo34_reg>;
+			cm36672p,irq_gpio = <&gpa1 4 0>;
 			cm36672p,default_hi_thd = <17>;
 			cm36672p,default_low_thd = <13>;
 			cm36672p,cancel_hi_thd = <10>;
 			cm36672p,cancel_low_thd = <7>;
+			cm36672p,ps_duty = <1>;
 			cm36672p,ps_it = <4>;
 			cm36672p,led_current = <5>;
 			cm36672p,default_trim = <0>;
