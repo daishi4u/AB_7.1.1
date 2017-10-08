@@ -134,6 +134,11 @@ config CPU_FREQ_DEFAULT_GOV_WHEATLEY
 	help
 		Use the CPUFreq governor 'wheatley' as default.
 
+config CPU_FREQ_DEFAULT_GOV_INTELLIACTIVE
+  	bool "intelliactive"
+  	select CPU_FREQ_GOV_INTELLIACTIVE
+  	help
+
 config CPU_FREQ_DEFAULT_GOV_LIONFISH
   	bool "lionfish"
   	select CPU_FREQ_GOV_LIONFISH
@@ -234,6 +239,10 @@ config CPU_FREQ_GOV_ZZMOOVE
 
 config CPU_FREQ_GOV_WHEATLEY
 	tristate "'wheatley' cpufreq governor"
+	depends on CPU_FREQ
+	
+config CPU_FREQ_GOV_INTELLIACTIVE
+	tristate "'intelliactive' cpufreq governor"
 	depends on CPU_FREQ
 
 config CPU_FREQ_GOV_LIONFISH

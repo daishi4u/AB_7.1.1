@@ -36,6 +36,7 @@ modules.builtin
 *.bak
 *.orig
 *.cpio
+*.log
 
 #
 # Top-level generic files
