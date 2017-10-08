@@ -139,6 +139,11 @@ config CPU_FREQ_DEFAULT_GOV_INTELLIACTIVE
   	select CPU_FREQ_GOV_INTELLIACTIVE
   	help
 
+config CPU_FREQ_DEFAULT_GOV_LULZACTIVE
+  	bool "lulzactive"
+  	select CPU_FREQ_GOV_LULZACTIVE
+  	help
+
 config CPU_FREQ_DEFAULT_GOV_LIONFISH
   	bool "lionfish"
   	select CPU_FREQ_GOV_LIONFISH
@@ -243,6 +248,10 @@ config CPU_FREQ_GOV_WHEATLEY
 	
 config CPU_FREQ_GOV_INTELLIACTIVE
 	tristate "'intelliactive' cpufreq governor"
+	depends on CPU_FREQ
+	
+config CPU_FREQ_GOV_LULZACTIVE
+	tristate "'lulzactive' cpufreq governor"
 	depends on CPU_FREQ
 
 config CPU_FREQ_GOV_LIONFISH

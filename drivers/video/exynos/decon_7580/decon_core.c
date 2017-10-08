@@ -32,6 +32,10 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/of_gpio.h>
+#include <linux/irq.h>
+#ifdef CONFIG_POWERSUSPEND
+#include <linux/powersuspend.h>
+#endif
 
 #include <mach/regs-clock.h>
 #include <mach/exynos-pm.h>
@@ -1152,6 +1156,9 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 			decon_err("failed to disable decon\n");
 			goto blank_exit;
 		}
+#ifdef CONFIG_POWERSUSPEND
+		set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
+#endif
 		break;
 	case FB_BLANK_UNBLANK:
 		DISP_SS_EVENT_LOG(DISP_EVT_UNBLANK, &decon->sd, ktime_set(0, 0));
@@ -1160,6 +1167,9 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 			decon_err("failed to enable decon\n");
 			goto blank_exit;
 		}
+#ifdef CONFIG_POWERSUSPEND
+		set_power_suspend_state_panel_hook(POWER_SUSPEND_INACTIVE);
+#endif
 		break;
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
@@ -2020,10 +2030,12 @@ static int decon_prevent_size_mismatch
 {
 	unsigned long delay_time = 100;
 	unsigned long cnt = timeout / delay_time;
-	u32 decon_line, dsim_line;
-	u32 decon_hoz, dsim_hoz;
+	u32 decon_line = 0, dsim_line = 0;
+	u32 decon_hoz = 0, dsim_hoz = 0;
+#ifdef CONFIG_DECON_EVENT_LOG
 	u32 need_save = true;
 	struct disp_ss_size_info info;
+#endif
 
 	if (decon->pdata->psr_mode == DECON_VIDEO_MODE)
 		return 0;
@@ -2040,6 +2052,7 @@ static int decon_prevent_size_mismatch
 		if (decon_line == dsim_line && decon_hoz == dsim_hoz)
 			goto wait_done;
 
+#ifdef CONFIG_DECON_EVENT_LOG
 		if (need_save) {
 			/* TODO: Save a err data */
 			info.w_in = decon_hoz;
@@ -2049,6 +2062,7 @@ static int decon_prevent_size_mismatch
 			DISP_SS_EVENT_SIZE_ERR_LOG(&decon->sd, &info);
 			need_save = false;
 		}
+#endif
 
 		udelay(delay_time);
 	}

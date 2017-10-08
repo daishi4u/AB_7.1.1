@@ -131,6 +131,9 @@ void arch_cpu_idle_dead(void)
 }
 #endif
 
+void (*pm_idle)(void) = arch_cpu_idle;
+EXPORT_SYMBOL(pm_idle);
+
 /*
  * Called by kexec, immediately prior to machine_kexec().
  *
