@@ -24,6 +24,7 @@
 #include <linux/moduleparam.h>
 #include <linux/rwsem.h>
 #include <linux/sched.h>
+#include <linux/sched/rt.h>
 #include <linux/tick.h>
 #include <linux/time.h>
 #include <linux/timer.h>
@@ -33,7 +34,6 @@
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
 #include <linux/input.h>
-#include <linux/sched/rt.h>
 
 static int active_count;
 
@@ -132,9 +132,9 @@ static bool io_is_busy = 1;
  */
 static unsigned int up_threshold_any_cpu_load = 95;
 static unsigned int sync_freq = 700000;
-static unsigned int up_threshold_any_cpu_freq = 920000;
+static unsigned int up_threshold_any_cpu_freq = 900000;
 
-static int two_phase_freq_array[NR_CPUS] = {[0 ... NR_CPUS-1] = 1134000} ;
+static int two_phase_freq_array[NR_CPUS] = {[0 ... NR_CPUS-1] = 1100000} ;
 
 static int cpufreq_governor_intelliactive(struct cpufreq_policy *policy,
 		unsigned int event);
