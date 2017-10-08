@@ -427,6 +427,8 @@ static void allocate_buf_for_compression(void)
 	}
 }
 
+#ifdef CONFIG_PSTORE_ZLIB_COMPRESS
+
 static void free_zlib(void)
 {
 	if (zbackend[0] && !zbackend[1])
@@ -434,6 +436,8 @@ static void free_zlib(void)
 	else
 		pr_err("free compression buffer error!\n");
 }
+
+#endif
 
 /*
  * Called when compression fails, since the printk buffer
