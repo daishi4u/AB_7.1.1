@@ -127,6 +127,13 @@ config CPU_FREQ_DEFAULT_GOV_ZZMOOVE
   	select CPU_FREQ_GOV_ZZMOOVE
   	help
 
+config CPU_FREQ_DEFAULT_GOV_WHEATLEY
+	bool "wheatley"
+	select CPU_FREQ_GOV_WHEATLEY
+	select CPU_FREQ_GOV_PERFORMANCE
+	help
+		Use the CPUFreq governor 'wheatley' as default.
+
 config CPU_FREQ_DEFAULT_GOV_LIONFISH
   	bool "lionfish"
   	select CPU_FREQ_GOV_LIONFISH
@@ -224,6 +231,10 @@ config CPU_FREQ_GOV_ZZMOOVE
   	depends on CPU_FREQ
   	help
     	'zzmoove' governor
+
+config CPU_FREQ_GOV_WHEATLEY
+	tristate "'wheatley' cpufreq governor"
+	depends on CPU_FREQ
 
 config CPU_FREQ_GOV_LIONFISH
   	tristate "'lionfish' cpufreq governor"

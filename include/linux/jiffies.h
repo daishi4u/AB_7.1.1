@@ -276,6 +276,7 @@ extern unsigned long preset_lpj;
 /*
  * Convert various time units to each other:
  */
+extern u64 jiffies64_to_nsecs(u64 j);
 extern unsigned int jiffies_to_msecs(const unsigned long j);
 extern unsigned int jiffies_to_usecs(const unsigned long j);
 extern unsigned long msecs_to_jiffies(const unsigned int m);

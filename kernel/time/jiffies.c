@@ -133,3 +133,13 @@ int register_refined_jiffies(long cycles_per_second)
 	clocksource_register(&refined_jiffies);
 	return 0;
 }
+
+u64 jiffies64_to_nsecs(u64 j)
+{
+#if !(NSEC_PER_SEC % HZ)
+	return (NSEC_PER_SEC / HZ) * j;
+# else
+	return div_u64(j * HZ_TO_NSEC_NUM, HZ_TO_NSEC_DEN);
+#endif
+}
+EXPORT_SYMBOL(jiffies64_to_nsecs);

@@ -338,6 +338,7 @@ const char *cpufreq_get_current_driver(void);
 /*********************************************************************
  *                        CPUFREQ 2.6. INTERFACE                     *
  *********************************************************************/
+cputime64_t get_cpu_idle_time(unsigned int cpu, cputime64_t *wall, bool io_is_busy);
 int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
 int cpufreq_update_policy(unsigned int cpu);
 bool have_governor_per_policy(void);
@@ -401,6 +402,9 @@ extern struct cpufreq_governor cpufreq_gov_conservative;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
 extern struct cpufreq_governor cpufreq_gov_interactive;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CAFACTIVE)
+extern struct cpufreq_governor cpufreq_gov_cafactive;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_cafactive)
 #endif
 
 
