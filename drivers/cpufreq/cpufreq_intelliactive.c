@@ -35,6 +35,11 @@
 #include <asm/cputime.h>
 #include <linux/input.h>
 
+#if defined(CONFIG_ARM_EXYNOS_MP_CPUFREQ) || defined(CONFIG_ARM_EXYNOS_SMP_CPUFREQ)
+#include <mach/cpufreq.h>
+#endif
+#include "cpu_load_metric.h"
+
 static int active_count;
 
 struct cpufreq_interactive_cpuinfo {
@@ -66,7 +71,7 @@ static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq;
+static unsigned int hispeed_freq = 900000;
 
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
@@ -346,6 +351,8 @@ static u64 update_load(int cpu)
 		active_time = delta_time - delta_idle;
 
 	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
+	
+	update_cpu_metric(cpu, now, delta_idle, delta_time, pcpu->policy);
 
 	pcpu->time_in_idle = now_idle;
 	pcpu->time_in_idle_timestamp = now;

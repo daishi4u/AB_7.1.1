@@ -187,7 +187,7 @@ static void cpufreq_interactive_timer_start(
 	pcpu->cpu_timer.expires = expires;
 	add_timer_on(&pcpu->cpu_timer, cpu);
 	if (tunables->timer_slack_val >= 0 &&
-	    pcpu->target_freq > pcpu->policy->min) {
+			pcpu->target_freq > pcpu->policy->min) {
 		expires += usecs_to_jiffies(tunables->timer_slack_val);
 		pcpu->cpu_slack_timer.expires = expires;
 		add_timer_on(&pcpu->cpu_slack_timer, cpu);
@@ -350,7 +350,7 @@ static u64 update_load(int cpu)
 		active_time = delta_time - delta_idle;
 
 	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
-
+	
 	update_cpu_metric(cpu, now, delta_idle, delta_time, pcpu->policy);
 
 	pcpu->time_in_idle = now_idle;
