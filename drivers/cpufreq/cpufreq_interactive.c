@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/kernel_stat.h>
 #include <linux/pm_qos.h>
+#include <linux/powersuspend.h>
 #include <asm/cputime.h>
 #ifdef CONFIG_ANDROID
 #include <asm/uaccess.h>
@@ -73,6 +74,9 @@ static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
 static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
+
+/* boolean for determining screen on/off state */
+static bool suspended = false;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
@@ -138,6 +142,8 @@ static struct cpufreq_interactive_tunables *common_tunables;
 static struct cpufreq_interactive_tunables *tuned_parameters[NR_CPUS] = {NULL, };
 
 static struct attribute_group *get_sysfs_attr(void);
+
+#define DOWN_LOW_LOAD_THRESHOLD 5
 
 static void cpufreq_interactive_timer_resched(
 	struct cpufreq_interactive_cpuinfo *pcpu)
@@ -394,7 +400,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	cpu_load = loadadjfreq / pcpu->policy->cur;
 	boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
 
-	if (cpu_load >= tunables->go_hispeed_load || boosted) {
+	if ((cpu_load >= tunables->go_hispeed_load && !suspended) || boosted) {
 		if (pcpu->target_freq < tunables->hispeed_freq) {
 			new_freq = tunables->hispeed_freq;
 		} else {
@@ -403,6 +409,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 			if (new_freq < tunables->hispeed_freq)
 				new_freq = tunables->hispeed_freq;
 		}
+	} else if (cpu_load <= DOWN_LOW_LOAD_THRESHOLD) {
+		new_freq = pcpu->policy->cpuinfo.min_freq;
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
 		if (new_freq > tunables->hispeed_freq &&
@@ -605,7 +613,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 					max_freq = pjcpu->target_freq; 
 			}
 
-				if (max_freq != pcpu->policy->cur)
+			if (max_freq != pcpu->policy->cur)
 				__cpufreq_driver_target(pcpu->policy,
 							max_freq,
 							CPUFREQ_RELATION_H);
@@ -679,7 +687,7 @@ static int cpufreq_interactive_notifier(
 	int cpu;
 	unsigned long flags;
 
-	if (val == CPUFREQ_POSTCHANGE) {
+	if (val == CPUFREQ_PRECHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
 		if (!down_read_trylock(&pcpu->enable_sem))
 			return 0;
@@ -1384,8 +1392,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			up_write(&pcpu->enable_sem);
 		}
 
-		kthread_stop(tunables->speedchange_task);
-		put_task_struct(tunables->speedchange_task);
+		if (tunables->speedchange_task) {
+			kthread_stop(tunables->speedchange_task);
+			put_task_struct(tunables->speedchange_task);
+		}
 		tunables->speedchange_task = NULL;
 
 		mutex_unlock(&gov_lock);
@@ -1435,7 +1445,7 @@ static
 struct cpufreq_governor cpufreq_gov_interactive = {
 	.name = "interactive",
 	.governor = cpufreq_governor_interactive,
-	.max_transition_latency = 10000000,
+	.max_transition_latency = 100000,
 	.owner = THIS_MODULE,
 };
 
@@ -1660,6 +1670,25 @@ static struct notifier_block cpufreq_interactive_cluster0_max_qos_notifier = {
 };
 #endif
 
+static void interactive_early_suspend(struct power_suspend *handler)
+{
+	suspended = true;
+
+	return;
+}
+
+static void interactive_late_resume(struct power_suspend *handler)
+{
+	suspended = false;
+
+	return;
+}
+
+static struct power_suspend interactive_suspend = {
+	.suspend = interactive_early_suspend,
+	.resume = interactive_late_resume,
+};
+
 static int __init cpufreq_interactive_init(void)
 {
 	unsigned int i;
@@ -1677,6 +1706,8 @@ static int __init cpufreq_interactive_init(void)
 		spin_lock_init(&pcpu->target_freq_lock);
 		init_rwsem(&pcpu->enable_sem);
 	}
+
+	register_power_suspend(&interactive_suspend);
 
 	spin_lock_init(&speedchange_cpumask_lock);
 	mutex_init(&gov_lock);
