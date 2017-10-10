@@ -34,6 +34,7 @@
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
 #include <linux/input.h>
+#include <linux/powersuspend.h>
 
 #if defined(CONFIG_ARM_EXYNOS_MP_CPUFREQ) || defined(CONFIG_ARM_EXYNOS_SMP_CPUFREQ)
 #include <mach/cpufreq.h>
@@ -70,6 +71,9 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
+/* boolean for determining screen on/off state */
+static bool suspended = false;
+
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static unsigned int hispeed_freq = 900000;
 
@@ -99,6 +103,8 @@ static unsigned long min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
 static unsigned long timer_rate = DEFAULT_TIMER_RATE;
 
+#define SCREEN_OFF_TIMER_RATE ((unsigned long)(60 * USEC_PER_MSEC))
+
 /* Busy SDF parameters*/
 #define MIN_BUSY_TIME (100 * USEC_PER_MSEC)
 
@@ -112,6 +118,9 @@ static unsigned int default_above_hispeed_delay[] = {
 static spinlock_t above_hispeed_delay_lock;
 static unsigned int *above_hispeed_delay = default_above_hispeed_delay;
 static int nabove_hispeed_delay = ARRAY_SIZE(default_above_hispeed_delay);
+
+#define DEFAULT_SCREEN_OFF_MAX 1000000
+static unsigned long screen_off_max = DEFAULT_SCREEN_OFF_MAX;
 
 /* Non-zero means indefinite speed boost active */
 static int boost_val;
@@ -392,6 +401,12 @@ static void cpufreq_interactive_timer(unsigned long data)
 	now = update_load(data);
 	delta_time = (unsigned int)(now - pcpu->cputime_speedadj_timestamp);
 	cputime_speedadj = pcpu->cputime_speedadj;
+	
+	if (suspended == false)
+		timer_rate = DEFAULT_TIMER_RATE;
+	else if (suspended == true)
+		timer_rate = SCREEN_OFF_TIMER_RATE;
+	
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 
 	if (WARN_ON_ONCE(!delta_time))
@@ -410,7 +425,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 		}
 	}
 
-	if (cpu_load >= go_hispeed_load || boosted) {
+	if ((cpu_load >= go_hispeed_load && !suspended) || boosted) {
 		if (pcpu->target_freq < hispeed_freq) {
 			nr_cpus = num_online_cpus();
 
@@ -647,6 +662,9 @@ static int cpufreq_interactive_speedchange_task(void *data)
 				if (pjcpu->target_freq > max_freq)
 					max_freq = pjcpu->target_freq;
 			}
+			
+			if (suspended == true)
+				if (max_freq > screen_off_max) max_freq = screen_off_max;
 
 			if (max_freq != pcpu->policy->cur)
 				__cpufreq_driver_target(pcpu->policy,
@@ -1461,6 +1479,25 @@ static void cpufreq_interactive_nop_timer(unsigned long data)
 {
 }
 
+static void interactive_early_suspend(struct power_suspend *handler)
+{
+	suspended = true;
+
+	return;
+}
+
+static void interactive_late_resume(struct power_suspend *handler)
+{
+	suspended = false;
+
+	return;
+}
+
+static struct power_suspend interactive_suspend = {
+	.suspend = interactive_early_suspend,
+	.resume = interactive_late_resume,
+};
+
 static int __init cpufreq_intelliactive_init(void)
 {
 	unsigned int i;
@@ -1478,6 +1515,8 @@ static int __init cpufreq_intelliactive_init(void)
 		spin_lock_init(&pcpu->load_lock);
 		init_rwsem(&pcpu->enable_sem);
 	}
+	
+	register_power_suspend(&interactive_suspend);
 
 	spin_lock_init(&target_loads_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
