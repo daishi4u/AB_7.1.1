@@ -86,7 +86,7 @@ static bool suspended = false;
 #endif
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq = 900000;
+static unsigned int hispeed_freq;
 
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
