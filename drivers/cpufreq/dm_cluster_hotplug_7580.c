@@ -141,20 +141,22 @@ static int get_core_count(enum hstate state)
 
 static void __ref hotplug_cpu(enum hstate state)
 {
-	int i, cnt_target, cpus;
+	int i, cnt_target;
 
 	cnt_target = get_core_count(state);
-	cpus = num_possible_cpus();
 
 	/* Check the Online CPU supposed to be online or offline */
-	for (i = 0 ; i < cnt_target ; i++) {
-		if (!cpu_online(i))
-			cpu_up(i);
-	}
-	/* Check the offline CPU supposed to be offline */
-	for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
-		if (cpu_online(i))
-			cpu_down(i);
+	for (i = 0 ; i < NR_CPUS ; i++) {
+		if(i < cnt_target)
+		{
+			if (!cpu_online(i))
+				cpu_up(i);
+		}
+		else
+		{
+			if (cpu_online(i))
+				cpu_down(i);
+		}
 	}
 }
 
@@ -333,9 +335,7 @@ static enum hstate hotplug_adjust_state(enum action move)
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
 	} else if (move != STAY){
-		state -= 2;
-		if (state <= 0)
-			state = H0;
+		state = state / 2;		// will go from 2->5->7->8 CPUs online
 	} 
 
 	return state;
