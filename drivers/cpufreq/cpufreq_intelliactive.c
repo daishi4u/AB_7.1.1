@@ -34,8 +34,7 @@
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
 
-// Causes problems with bluetooth and headphone jack
-//#define INTELLIACTIVE_TOUCH_BOOST 	1
+#define INTELLIACTIVE_TOUCH_BOOST 	1
 
 #if defined(INTELLIACTIVE_TOUCH_BOOST)
 #include <linux/input.h>
@@ -1273,23 +1272,10 @@ static void interactive_input_event(struct input_handle *handle,
 		unsigned int type,
 		unsigned int code, int value)
 {
-	if (type == EV_SYN && code == SYN_REPORT) {
+	if (type == EV_SYN && code == BTN_TOUCH) {
 		boostpulse_endtime = ktime_to_us(ktime_get()) +
 			boostpulse_duration_val;
 		cpufreq_interactive_boost();
-	}
-}
-
-static int input_dev_filter(const char *input_dev_name)
-{
-	if (strstr(input_dev_name, "touchscreen") ||
-	    strstr(input_dev_name, "touch_dev") ||
-	    strstr(input_dev_name, "atmel_mxt224e") ||
-	    strstr(input_dev_name, "sec-touchscreen") ||
-	    strstr(input_dev_name, "keypad")) {
-		return 0;
-	} else {
-		return 1;
 	}
 }
 
@@ -1299,9 +1285,6 @@ static int interactive_input_connect(struct input_handler *handler,
 {
 	struct input_handle *handle;
 	int error;
-
-	if (input_dev_filter(dev->name))
-		return -ENODEV;
 
 	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
 	if (!handle)

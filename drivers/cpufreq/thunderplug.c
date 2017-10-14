@@ -39,7 +39,7 @@
 #define DEFAULT_CPU_LOAD_THRESHOLD   (65)
 #define MIN_CPU_LOAD_THRESHOLD       (10)
 
-#define HOTPLUG_ENABLED              (1)
+#define HOTPLUG_ENABLED              (0)
 #define DEFAULT_HOTPLUG_STYLE         HOTPLUG_SCHED
 #define DEFAULT_SCHED_MODE            BALANCED
 
@@ -50,7 +50,7 @@
 
 static bool isSuspended = false;
 
-static int suspend_cpu_num = 2, resume_cpu_num = (NR_CPUS -1);
+static int suspend_cpu_num = 4, resume_cpu_num = (NR_CPUS -1);
 static int endurance_level = 0;
 static int core_limit = NR_CPUS;
 
@@ -372,6 +372,7 @@ static void __cpuinit tplug_work_fn(struct work_struct *work)
 static void tplug_es_suspend_work(struct power_suspend *p) {
 
 	isSuspended = true;
+	suspend_cpu_num = 1;	// change to 1 cpu while suspended
 	offline_cpus();		// we're only going to put this here because if the cpu gets overwhelmed during suspend and no more cores can come online then we get random reboots
 	
 	pr_info("thunderplug : suspend called\n");
@@ -379,6 +380,7 @@ static void tplug_es_suspend_work(struct power_suspend *p) {
 
 static void __cpuinit tplug_es_resume_work(struct power_suspend *p) {
 	isSuspended = false;
+	suspend_cpu_num = 4;	// 4 cpus online while not suspened
 	cpus_online_all();
 
 	pr_info("%s: resume\n", THUNDERPLUG);

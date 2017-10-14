@@ -190,9 +190,7 @@ EXPORT_SYMBOL_GPL(get_cpu_idle_time);
 
 unsigned int cpufreq_quick_get_util(unsigned int cpu)
 {
-	int load, freq;
-	cpu_load_metric_get(&load, &freq);
-	return load;
+	return cpu_get_avg_load();
 }
 EXPORT_SYMBOL(cpufreq_quick_get_util);
 

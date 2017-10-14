@@ -73,6 +73,27 @@ void cpu_load_metric_get(int *load, int *freq)
 	*freq = _freq;
 }
 
+int cpu_get_load(int cpu)
+{
+	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
+
+	return pcpuload->load;	
+}
+
+int cpu_get_avg_load()
+{
+	int avg_load = 0;
+	int cpu;
+	
+	for_each_online_cpu(cpu) {
+		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
+
+		avg_load += pcpuload->load;
+	}
+	
+	return avg_load / num_online_cpus();
+}
+
 static void get_cluster_stat(struct cluster_stats *cl)
 {
 	int util = 0, freq = 0;

@@ -32,6 +32,8 @@ struct cluster_stats
 void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time, struct cpufreq_policy *policy);
 
 void cpu_load_metric_get(int *load, int *freq);
+int cpu_get_load(int cpu);
+int cpu_get_avg_load();
 void get_cluster_stats(struct cluster_stats *clstats);
 
 #endif /* _DRIVERS_CPU_LOAD_METRIC_H */
