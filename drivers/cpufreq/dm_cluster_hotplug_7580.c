@@ -191,8 +191,8 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 		max_state = ctrl_hotplug.max_lock;
 
 #ifndef CONFIG_EXYNOS7580_QUAD
-		if (lcd_on && (state > H6))
-			state = H6;
+		if (lcd_on && (state > H4))
+			state = H4;
 #else
 		if (lcd_on)
 			state = H0;
