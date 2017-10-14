@@ -1,3 +1,5 @@
+obj-$(CONFIG_THUNDERPLUG_CONTROL) += thunderplug.o
+
 # CPUfreq core
 obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o cpu_load_metric.o
 # CPUfreq stats

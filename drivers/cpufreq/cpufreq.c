@@ -37,6 +37,8 @@
 
 #include <trace/events/power.h>
 
+#include "cpu_load_metric.h"
+
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -185,6 +187,14 @@ inline cputime64_t get_cpu_idle_time(
 	return idle_time;
 }
 EXPORT_SYMBOL_GPL(get_cpu_idle_time);
+
+unsigned int cpufreq_quick_get_util(unsigned int cpu)
+{
+	int load, freq;
+	cpu_load_metric_get(&load, &freq);
+	return load;
+}
+EXPORT_SYMBOL(cpufreq_quick_get_util);
 
 static struct cpufreq_policy *__cpufreq_cpu_get(unsigned int cpu, bool sysfs)
 {

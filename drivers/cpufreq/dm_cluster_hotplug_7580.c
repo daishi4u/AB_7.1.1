@@ -336,6 +336,8 @@ static enum hstate hotplug_adjust_state(enum action move)
 			state = MAX_HSTATE - 1;
 	} else if (move != STAY){
 		state = state / 2;		// will go from 2->5->7->8 CPUs online
+		if(state < 0)			// we "shouldn't" need this, but just in case
+			state = 0;
 	} 
 
 	return state;
@@ -387,7 +389,7 @@ static int fb_state_change(struct notifier_block *nb,
 			lcd_on = true;
 			mutex_lock(&hotplug_lock);
 			if (ctrl_hotplug.force_hstate == -1)
-				hotplug_enter_hstate(true, H3);		// turn on 4 cores
+				hotplug_enter_hstate(true, H0);		// turn on all cores
 			mutex_unlock(&hotplug_lock);
 			break;
 		}
