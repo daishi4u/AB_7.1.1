@@ -62,7 +62,7 @@ static struct asmp_param_struct {
 
 static unsigned int cycle = 0, delay0 = 0;
 static unsigned long delay_jif = 0;
-static int enabled __read_mostly = 0; //enabled by default.
+static int enabled __read_mostly = 1; //enabled by default.
 
 static void __cpuinit asmp_work_fn(struct work_struct *work) {
 	unsigned int cpu, slow_cpu;
@@ -147,7 +147,7 @@ static void asmp_power_suspend(struct power_suspend *h) {
 	}
 	
 	/* suspend main work thread */
-	//cancel_delayed_work_sync(&asmp_work);
+	cancel_delayed_work_sync(&asmp_work);
 
 	pr_info(ASMP_TAG"suspended\n");
 }
@@ -159,14 +159,16 @@ static void __cpuinit asmp_late_resume(struct power_suspend *h) {
 
 	/* hotplug offline cpu cores */
 
-  if (num_online_cpus() < asmp_param.max_cpus)
-   {
-	   for_each_present_cpu(cpu) {
-		   if (!cpu_online(cpu))
-			   cpu_up(cpu);
-	   }
+	if (num_online_cpus() < asmp_param.max_cpus)
+	{
+		for_each_present_cpu(cpu) {
+			if (!cpu_online(cpu))
+				cpu_up(cpu);
+		}
 
-  }
+	}
+	
+	queue_delayed_work(asmp_workq, &asmp_work, delay_jif);
 	pr_info(ASMP_TAG"resumed\n");
 }
 

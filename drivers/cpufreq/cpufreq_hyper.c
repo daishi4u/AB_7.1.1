@@ -27,6 +27,8 @@
 #include <linux/input.h>
 #include <linux/slab.h>
 
+#include "cpu_load_metric.h"
+
 /*
  * dbs is used in this file as a shortform for demandbased switching
  * It helps to keep variable names smaller, simpler
@@ -761,6 +763,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		idle_time = (unsigned int)
 			(cur_idle_time - j_dbs_info->prev_cpu_idle);
 		j_dbs_info->prev_cpu_idle = cur_idle_time;
+		
+		update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
 
 		iowait_time = (unsigned int)
 			(cur_iowait_time - j_dbs_info->prev_cpu_iowait);
@@ -799,7 +803,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		if (unlikely(!wall_time || wall_time < idle_time))
 			continue;
 
-		cur_load = 100 * (wall_time - idle_time) / wall_time;
+		cur_load = cpu_get_load(j);		// 100 * (wall_time - idle_time) / wall_time;
 
 		freq_avg = __cpufreq_driver_getavg(policy, j);
 		if (freq_avg <= 0)

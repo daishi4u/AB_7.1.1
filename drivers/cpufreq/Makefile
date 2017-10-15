@@ -1,4 +1,5 @@
 obj-$(CONFIG_THUNDERPLUG_CONTROL) += thunderplug.o
+obj-$(CONFIG_ASMP)		+= autosmp.o
 
 # CPUfreq core
 obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o cpu_load_metric.o

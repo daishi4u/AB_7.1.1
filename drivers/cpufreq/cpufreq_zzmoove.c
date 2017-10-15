@@ -34,6 +34,7 @@
 // AP: use msm8974 lcd status notifier
 // #define USE_LCD_NOTIFIER
 
+#include "cpu_load_metric.h"
 #include <linux/cpu.h>
 #ifdef USE_LCD_NOTIFIER
 #include <linux/lcd_notify.h>
@@ -2532,40 +2533,6 @@ static inline void adjust_freq_thresholds(unsigned int step)
 }
 #endif /* ENABLE_AUTO_ADJUST_FREQ */
 
-static inline u64 get_cpu_idle_time2_jiffy(unsigned int cpu, u64 *wall)
-{
-	u64 idle_time;
-	u64 cur_wall_time;
-	u64 busy_time;
-
-	cur_wall_time = jiffies64_to_cputime64(get_jiffies_64());
-
-	busy_time = kcpustat_cpu(cpu).cpustat[CPUTIME_USER];
-	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SYSTEM];
-	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_IRQ];
-	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SOFTIRQ];
-	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_STEAL];
-	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_NICE];
-
-	idle_time = cur_wall_time - busy_time;
-	if (wall)
-		*wall = cputime_to_usecs(cur_wall_time);
-
-	return cputime_to_usecs(idle_time);
-}
-
-u64 get_cpu_idle_time2(unsigned int cpu, u64 *wall, int io_busy)
-{
-	u64 idle_time = get_cpu_idle_time_us(cpu, io_busy ? wall : NULL);
-
-	if (idle_time == -1ULL)
-		return get_cpu_idle_time2_jiffy(cpu, wall);
-	else if (!io_busy)
-		idle_time += get_cpu_iowait_time_us(cpu, wall);
-
-	return idle_time;
-}
-
 // keep track of frequency transitions
 static int dbs_cpufreq_notifier(struct notifier_block *nb, unsigned long val, void *data)
 {
@@ -3460,7 +3427,7 @@ static ssize_t store_ignore_nice_load(struct kobject *a, struct attribute *b, co
 	for_each_online_cpu(j) {
 		 struct cpu_dbs_info_s *dbs_info;
 		 dbs_info = &per_cpu(cs_cpu_dbs_info, j);
-		 dbs_info->prev_cpu_idle = get_cpu_idle_time2(j,
+		 dbs_info->prev_cpu_idle = get_cpu_idle_time(j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) || defined(CPU_IDLE_TIME_IN_CPUFREQ) /* overrule for sources with backported cpufreq implementation */
 		 &dbs_info->prev_cpu_wall, 0);
 #else
@@ -5941,7 +5908,7 @@ static inline int set_profile(int profile_num)
 		for_each_online_cpu(j) {
 		     struct cpu_dbs_info_s *dbs_info;
 		     dbs_info = &per_cpu(cs_cpu_dbs_info, j);
-		     dbs_info->prev_cpu_idle = get_cpu_idle_time2(j,
+		     dbs_info->prev_cpu_idle = get_cpu_idle_time(j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) || defined(CPU_IDLE_TIME_IN_CPUFREQ) /* overrule for sources with backported cpufreq implementation */
 		 &dbs_info->prev_cpu_wall, 0);
 #else
@@ -7263,7 +7230,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 		j_dbs_info = &per_cpu(cs_cpu_dbs_info, j);
 
-		cur_idle_time = get_cpu_idle_time2(j,
+		cur_idle_time = get_cpu_idle_time(j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) || defined(CPU_IDLE_TIME_IN_CPUFREQ)	/* overrule for sources with backported cpufreq implementation */
 		     &cur_wall_time, 0);
 #else
@@ -7288,6 +7255,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 				j_dbs_info->prev_cpu_idle);
 		j_dbs_info->prev_cpu_idle = cur_idle_time;
 #endif /* LINUX_VERSION_CODE... */
+
+                            update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
 		if (dbs_tuners_ins.ignore_nice) {
 		    u64 cur_nice;
 		    unsigned long cur_nice_jiffies;
@@ -7315,7 +7284,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		if (unlikely(!wall_time || wall_time < idle_time))
 		    continue;
 
-		load = 100 * (wall_time - idle_time) / wall_time;
+		load = cpu_get_load(j);		// 100 * (wall_time - idle_time) / wall_time;
 #if defined(CONFIG_ARCH_EXYNOS4)
 		if (load > max_load)
 #endif /* CONFIG_ARCH_EXYNOS4 */
@@ -8709,7 +8678,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 			j_dbs_info = &per_cpu(cs_cpu_dbs_info, j);
 			j_dbs_info->cur_policy = policy;
 
-			j_dbs_info->prev_cpu_idle = get_cpu_idle_time2(j,
+			j_dbs_info->prev_cpu_idle = get_cpu_idle_time(j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) || defined(CPU_IDLE_TIME_IN_CPUFREQ)	/* ZZ: overrule for sources with backported cpufreq implementation */
 			&j_dbs_info->prev_cpu_wall, 0);
 #else

@@ -429,7 +429,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	spin_lock_irqsave(&pcpu->target_freq_lock, flags);
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
-	cpu_load = loadadjfreq / pcpu->policy->cur;
+	cpu_load = cpu_get_load(data);		// loadadjfreq / pcpu->policy->cur;
 	boosted = boost_val || now < boostpulse_endtime;
 	this_hispeed_freq = max(hispeed_freq, pcpu->policy->min);
 
