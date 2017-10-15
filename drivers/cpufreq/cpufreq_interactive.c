@@ -51,6 +51,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
 
+#include <../drivers/gpu/arm/t7xx/r15p0/platform/exynos/mali_kbase_platform.h>
+
 struct cpufreq_interactive_cpuinfo {
 	struct timer_list cpu_timer;
 	struct timer_list cpu_slack_timer;
@@ -106,6 +108,10 @@ struct cpufreq_interactive_tunables {
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
+	
+	#define GPU_UP_UTILIZATION 80
+	static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
+
 	/* Target load. Lower values result in higher CPU speeds. */
 	spinlock_t target_loads_lock;
 	unsigned int *target_loads;
@@ -381,7 +387,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	u64 now;
 	unsigned int delta_time;
 	u64 cputime_speedadj;
-	int cpu_load;
+	int cpu_load, gpu_load;
 	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, data);
 	struct cpufreq_interactive_tunables *tunables =
@@ -421,6 +427,11 @@ static void cpufreq_interactive_timer(unsigned long data)
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = cpu_get_load(data);		// loadadjfreq / pcpu->policy->cur;
+	
+	gpu_load = gpu_get_utilization();
+	if (gpu_load >= gpu_up_utilization);
+		cpu_load = max(cpu_load, gpu_load);
+	
 	boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
 
 #if defined(CONFIG_POWERSUSPEND)
@@ -916,6 +927,29 @@ static ssize_t store_go_hispeed_load(struct cpufreq_interactive_tunables
 	return count;
 }
 
+static ssize_t show_gpu_up_utilization(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", gpu_up_utilization);
+}
+
+static ssize_t store_gpu_up_utilization(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = strict_strtoul(buf, 0, &val);
+	if (ret < 0 || ret > 100)
+		return ret;
+	gpu_up_utilization = val;
+	return count;
+}
+
+static struct global_attr gpu_up_utilization_attr = __ATTR(gpu_up_utilization, 0644,
+		show_gpu_up_utilization, store_gpu_up_utilization);
+
+
 static ssize_t show_min_sample_time(struct cpufreq_interactive_tunables
 		*tunables, char *buf)
 {
@@ -1146,6 +1180,7 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&above_hispeed_delay_gov_sys.attr,
 	&hispeed_freq_gov_sys.attr,
 	&go_hispeed_load_gov_sys.attr,
+	&gpu_up_utilization_attr.attr,
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
