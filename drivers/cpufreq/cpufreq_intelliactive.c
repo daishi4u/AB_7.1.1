@@ -34,7 +34,7 @@
 #include <linux/kernel_stat.h>
 #include <asm/cputime.h>
 
-#define INTELLIACTIVE_TOUCH_BOOST 	1
+//#define INTELLIACTIVE_TOUCH_BOOST 	1
 
 #if defined(INTELLIACTIVE_TOUCH_BOOST)
 #include <linux/input.h>
