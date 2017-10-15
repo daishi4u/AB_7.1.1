@@ -49,6 +49,8 @@
 #endif
 #include "cpu_load_metric.h"
 
+#include <../drivers/gpu/arm/t7xx/r15p0/platform/exynos/mali_kbase_platform.h>
+
 static int active_count;
 
 struct cpufreq_interactive_cpuinfo {
@@ -90,6 +92,9 @@ static unsigned int hispeed_freq;
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 static unsigned long go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
+
+#define GPU_UP_UTILIZATION 80
+static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
 
 /* Sampling down factor to be applied to min_sample_time at max freq */
 static unsigned int sampling_down_factor;
@@ -432,7 +437,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = loadadjfreq / pcpu->target_freq;
 	pcpu->prev_load = cpu_load;
-	boosted = boost_val || now < boostpulse_endtime;
+	boosted = boost_val || now < boostpulse_endtime || gpu_get_utilization() > gpu_up_utilization;
 
 	if (counter < 5) {
 		counter++;
@@ -1018,6 +1023,28 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
+		
+static ssize_t show_gpu_up_utilization(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", gpu_up_utilization);
+}
+
+static ssize_t store_gpu_up_utilization(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = strict_strtoul(buf, 0, &val);
+	if (ret < 0 || ret > 100)
+		return ret;
+	gpu_up_utilization = val;
+	return count;
+}
+
+static struct global_attr gpu_up_utilization_attr = __ATTR(gpu_up_utilization, 0644,
+		show_gpu_up_utilization, store_gpu_up_utilization);
 
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
@@ -1251,6 +1278,7 @@ static struct attribute *interactive_attributes[] = {
 	&above_hispeed_delay_attr.attr,
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
+	&gpu_up_utilization_attr.attr,
 	&min_sample_time_attr.attr,
 	&timer_rate_attr.attr,
 	&timer_slack.attr,

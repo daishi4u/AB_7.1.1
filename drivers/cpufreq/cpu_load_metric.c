@@ -80,7 +80,7 @@ int cpu_get_load(int cpu)
 	return pcpuload->load;	
 }
 
-int cpu_get_avg_load()
+int cpu_get_avg_load(void)
 {
 	int avg_load = 0;
 	int cpu;

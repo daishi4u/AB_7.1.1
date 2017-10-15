@@ -87,7 +87,7 @@ static gpu_attribute gpu_config_attributes[] = {
 		GPU_DVFS_TABLE_LIST_SIZE(gpu_dvfs_table_default)},
 	{GPU_GOVERNOR_TABLE_SIZE_BOOSTER,
 		GPU_DVFS_TABLE_LIST_SIZE(gpu_dvfs_table_default)},
-	{GPU_GOVERNOR_INTERACTIVE_HIGHSPEED_CLOCK, 668},
+	{GPU_GOVERNOR_INTERACTIVE_HIGHSPEED_CLOCK, 800},
 	{GPU_GOVERNOR_INTERACTIVE_HIGHSPEED_LOAD, 95},
 	{GPU_GOVERNOR_INTERACTIVE_HIGHSPEED_DELAY, 0},
 	{GPU_DEFAULT_VOLTAGE, 900000},
@@ -129,7 +129,7 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_DVFS_POLLING_TIME, 30},
 	{GPU_PMQOS_INT_DISABLE, 0},
 	{GPU_PMQOS_MIF_MAX_CLOCK, 825000},
-	{GPU_PMQOS_MIF_MAX_CLOCK_BASE, 734},
+	{GPU_PMQOS_MIF_MAX_CLOCK_BASE, 800},
 	{GPU_CL_DVFS_START_BASE, 600},
 	{GPU_DEBUG_LEVEL, DVFS_WARNING},
 	{GPU_TRACE_LEVEL, TRACE_ALL},
@@ -229,6 +229,11 @@ int gpu_get_cur_clock(struct exynos_context *platform)
 	}
 
 	return clk_get_rate(aclk_g3d)/MHZ;
+}
+
+int gpu_get_load()
+{
+	
 }
 
 int gpu_is_clock_on(void)

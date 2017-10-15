@@ -40,6 +40,8 @@ extern struct ion_device *ion_exynos;
 #include <plat/cpu.h>
 #endif
 
+extern int gpu_pm_get_dvfs_utilisation(struct kbase_device *kbdev, int *, int *);
+
 struct kbase_device *pkbdev;
 static int gpu_debug_level;
 
@@ -56,6 +58,11 @@ void gpu_set_debug_level(int level)
 int gpu_get_debug_level(void)
 {
 	return gpu_debug_level;
+}
+
+int gpu_get_utilization(void)
+{
+	return gpu_pm_get_dvfs_utilisation(pkbdev, 0, 0);
 }
 
 #ifdef CONFIG_MALI_EXYNOS_TRACE

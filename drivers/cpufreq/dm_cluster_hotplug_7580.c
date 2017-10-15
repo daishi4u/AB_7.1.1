@@ -8,6 +8,8 @@
 #include <linux/suspend.h>
 #include <linux/pm_qos.h>
 
+#include <../drivers/gpu/arm/t7xx/r15p0/platform/exynos/mali_kbase_platform.h>
+
 static struct delayed_work exynos_hotplug;
 static struct delayed_work start_hotplug;
 static struct workqueue_struct *khotplug_wq;
@@ -45,6 +47,7 @@ struct exynos_hotplug_ctrl {
 	unsigned int up_tasks;
 	unsigned int down_tasks;
 	unsigned int down_freq_limit;
+	unsigned int gpu_up_threshold;
 	int max_lock;
 	int min_lock;
 	int force_hstate;
@@ -117,6 +120,7 @@ static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.cur_hstate = H0,
 	.old_state = H0,
 	.down_freq_limit = 300000,
+	.gpu_up_threshold = 80,
 };
 
 static DEFINE_MUTEX(hotplug_lock);
@@ -312,7 +316,7 @@ static enum action select_up_down(void)
 	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || ((num_online * ctrl_hotplug.down_tasks) >= nr)) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * ctrl_hotplug.up_tasks) < nr)) {
+	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * ctrl_hotplug.up_tasks) < nr) || (gpu_get_utilization() > ctrl_hotplug.gpu_up_threshold)) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}

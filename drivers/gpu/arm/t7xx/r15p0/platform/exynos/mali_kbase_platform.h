@@ -430,6 +430,8 @@ void gpu_clock_disable(struct kbase_device *kbdev);
 bool balance_init(struct kbase_device *kbdev);
 int exynos_gpu_init_hw(void *dev);
 
+int gpu_get_utilization(void);
+
 #ifdef CONFIG_MALI_DVFS_USER
 bool gpu_dvfs_process_job(void *pkatom);
 unsigned int gpu_get_config_attr_size(void);
