@@ -62,7 +62,12 @@ int gpu_get_debug_level(void)
 
 int gpu_get_utilization(void)
 {
-	return gpu_pm_get_dvfs_utilisation(pkbdev, 0, 0);
+	int util = gpu_pm_get_dvfs_utilisation(pkbdev, 0, 0);
+	if (util < 0)
+		util = 0;
+	else if (util > 100)
+		util = 100;
+	return util;
 }
 
 #ifdef CONFIG_MALI_EXYNOS_TRACE

@@ -231,11 +231,6 @@ int gpu_get_cur_clock(struct exynos_context *platform)
 	return clk_get_rate(aclk_g3d)/MHZ;
 }
 
-int gpu_get_load()
-{
-	
-}
-
 int gpu_is_clock_on(void)
 {
 	return __clk_is_enabled(aclk_g3d);
