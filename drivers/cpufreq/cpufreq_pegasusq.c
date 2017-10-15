@@ -30,6 +30,9 @@
 #include <linux/slab.h>
 #include <linux/suspend.h>
 #include <linux/reboot.h>
+#include <linux/powersuspend.h>
+
+#include "cpu_load_metric.h"
 
 /*
  * dbs is used in this file as a shortform for demandbased switching
@@ -60,6 +63,8 @@
 #define FREQ_FOR_RESPONSIVENESS			(1100000)
 
 static unsigned int min_sampling_rate;
+
+static bool suspended = false;
 
 static void do_dbs_timer(struct work_struct *work);
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
@@ -398,6 +403,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		idle_time = (unsigned int)
 				(cur_idle_time - prev_idle_time);
 		j_dbs_info->prev_cpu_idle = cur_idle_time;
+		
+		update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
 
 		iowait_time = (unsigned int)
 				(cur_iowait_time - prev_iowait_time);
@@ -522,7 +529,8 @@ static void do_dbs_timer(struct work_struct *work)
 
 	mutex_lock(&dbs_info->timer_mutex);
 
-	dbs_check_cpu(dbs_info);
+	if(!suspended)
+		dbs_check_cpu(dbs_info);
 	/* We want all CPUs to do sampling nearly on
 	 * same jiffy
 	 */
@@ -532,9 +540,23 @@ static void do_dbs_timer(struct work_struct *work)
 	if (num_online_cpus() > 1)
 		delay -= jiffies % delay;
 
+	
 	schedule_delayed_work_on(cpu, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
 }
+
+static void pegasusq_early_suspend(struct power_suspend *handler) {
+	suspended = true;
+}
+
+static void pegasusq_late_resume(struct power_suspend *handler) {
+	suspended = false;
+}
+
+static struct power_suspend pegasusq_power_suspend = {
+	.suspend = pegasusq_early_suspend,
+	.resume = pegasusq_late_resume,
+};
 
 static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 {
@@ -656,6 +678,8 @@ static int __init cpufreq_gov_dbs_init(void)
 	ret = cpufreq_register_governor(&cpufreq_gov_pegasusq);
 	if (ret)
 		goto err_reg;
+	
+	register_power_suspend(&pegasusq_power_suspend);
 
 	return ret;
 
@@ -667,6 +691,7 @@ err_reg:
 static void __exit cpufreq_gov_dbs_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_pegasusq);
+	unregister_power_suspend(&pegasusq_power_suspend);
 	kfree(&dbs_tuners_ins);
 }
 

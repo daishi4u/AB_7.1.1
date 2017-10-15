@@ -34,6 +34,8 @@
 #include <linux/sched/rt.h>
 #include <linux/module.h>
 
+#include "cpu_load_metric.h"
+
 #define LULZACTIVE_VERSION	(2)
 #define LULZACTIVE_AUTHOR	"tegrak"
 
@@ -333,11 +335,13 @@ static void cpufreq_lulzactive_timer(unsigned long data)
 		      delta_time, idle_exit_time, pcpu->timer_run_time);
 		goto rearm;
 	}
+	
+	update_cpu_metric(data, pcpu->timer_run_time, delta_idle, delta_time, pcpu->policy);
 
 	if (delta_idle > delta_time)
 		cpu_load = 0;
 	else
-		cpu_load = 100 * (delta_time - delta_idle) / delta_time;
+		cpu_load = cpu_get_load(data);
 
 	delta_idle = (unsigned int) cputime64_sub(now_idle,
 						 pcpu->freq_change_time_in_idle);
@@ -347,8 +351,7 @@ static void cpufreq_lulzactive_timer(unsigned long data)
 	if (delta_idle > delta_time)
 		load_since_change = 0;
 	else
-		load_since_change =
-			100 * (delta_time - delta_idle) / delta_time;
+		load_since_change = cpu_get_load(data);
 
 	/*
 	 * Choose greater of short-term load (since last idle timer
@@ -356,7 +359,10 @@ static void cpufreq_lulzactive_timer(unsigned long data)
 	 * (since last frequency change).
 	 */
 	if (load_since_change > cpu_load)
+	{
 		cpu_load = load_since_change;
+		update_cpu_metric(data, pcpu->timer_run_time, delta_idle, delta_time, pcpu->policy);
+	}
 	
 	/* 
 	 * START lulzactive algorithm section

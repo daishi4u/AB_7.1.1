@@ -434,7 +434,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	this_hispeed_freq = max(hispeed_freq, pcpu->policy->min);
 
 #if defined(CONFIG_POWERSUSPEND)
-	if ((cpu_load >= go_hispeed_load && !suspended) || boosted) {
+	if ((cpu_load >= go_hispeed_load || boosted) && !suspended) {
 #else
 	if (cpu_load >= go_hispeed_load || boosted) {
 #endif

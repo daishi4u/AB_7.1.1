@@ -602,10 +602,6 @@ static int cpufreq_interactive_speedchange_task(void *data)
 		if (cpumask_empty(&policy_mask)) {
 			spin_unlock_irqrestore(&speedchange_cpumask_lock,
 					       flags);
-
-			if (kthread_should_stop())
-				break;
-
 			schedule();
 
 			if (kthread_should_stop())

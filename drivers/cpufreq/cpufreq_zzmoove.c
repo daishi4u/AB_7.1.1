@@ -7256,7 +7256,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		j_dbs_info->prev_cpu_idle = cur_idle_time;
 #endif /* LINUX_VERSION_CODE... */
 
-                            update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
+        update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
+		
 		if (dbs_tuners_ins.ignore_nice) {
 		    u64 cur_nice;
 		    unsigned long cur_nice_jiffies;
