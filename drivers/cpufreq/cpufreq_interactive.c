@@ -84,6 +84,9 @@ static struct mutex gov_lock;
 static bool suspended = false;
 #endif
 
+#define GPU_UP_UTILIZATION 80
+static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
+
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
 static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
@@ -108,9 +111,6 @@ struct cpufreq_interactive_tunables {
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
-	
-	#define GPU_UP_UTILIZATION 80
-	static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
 
 	/* Target load. Lower values result in higher CPU speeds. */
 	spinlock_t target_loads_lock;
