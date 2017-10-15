@@ -435,7 +435,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
-	cpu_load = loadadjfreq / pcpu->target_freq;
+	cpu_load = cpu_get_avg_load();	// loadadjfreq / pcpu->target_freq;
 	pcpu->prev_load = cpu_load;
 	boosted = boost_val || now < boostpulse_endtime || gpu_get_utilization() > gpu_up_utilization;
 
