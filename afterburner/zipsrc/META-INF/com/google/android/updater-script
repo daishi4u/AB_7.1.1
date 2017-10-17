@@ -17,7 +17,7 @@ package_extract_dir("add-ons", "/tmp/add-ons");
 set_progress(0.2);
 
 ui_print("Cleaning previous installations...");
-run_program("/sbin/busybox", "chmod", "755", "/tmp/add-ons/clean_previous");
+run_program("/sbin/busybox", "chmod", "-R", "755", "/tmp/add-ons");
 run_program("/tmp/add-ons/clean_previous");
 set_progress(0.3);
 
@@ -53,11 +53,11 @@ ui_print("Unmounting /system and /data");
 if is_mounted("/data")
 then
 unmount("/data");
-endif
+endif;
 if is_mounted("/system")
 then
 unmount("/system");
-endif
+endif;
 
 set_progress(1.0);
 

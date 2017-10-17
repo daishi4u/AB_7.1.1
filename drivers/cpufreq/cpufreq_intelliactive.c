@@ -387,7 +387,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	u64 now;
 	unsigned int delta_time;
 	u64 cputime_speedadj;
-	int cpu_load, gpu_load;
+	int cpu_load;
 	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, data);
 	unsigned int new_freq;
@@ -432,15 +432,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = cpu_get_load(data);	// loadadjfreq / pcpu->target_freq;	
 	pcpu->prev_load = cpu_load;
-	
-	gpu_load = gpu_get_utilization();
-	if (gpu_load >= gpu_up_utilization)
-	{
-		if (cpu_load < gpu_load)
-			cpu_load = gpu_load;	// give a boost when GPU load is over 80%
-	}
-	
-	boosted = boost_val || now < boostpulse_endtime;
+	boosted = boost_val || now < boostpulse_endtime || gpu_get_utilization() >= gpu_up_utilization;
 
 	if (counter < 5) {
 		counter++;
