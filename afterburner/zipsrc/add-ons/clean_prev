@@ -1,7 +1,6 @@
-#!/tmp/bootimgtools/tools/bash
+#!/sbin/busybox sh
 tooldir=/tmp/bootimgtools/tools
-box=$tooldir/busybox
-cd $tooldir/kernel/ramdisk
+box=/sbin/busybox
 
 # remove root
 $box rm /data/su.img

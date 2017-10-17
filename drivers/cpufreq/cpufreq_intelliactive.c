@@ -81,11 +81,6 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
-#if defined(CONFIG_POWERSUSPEND)
-/* boolean for determining screen on/off state */
-static bool suspended = false;
-#endif
-
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static unsigned int hispeed_freq;
 
@@ -392,7 +387,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	u64 now;
 	unsigned int delta_time;
 	u64 cputime_speedadj;
-	int cpu_load;
+	int cpu_load, gpu_load;
 	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, data);
 	unsigned int new_freq;
@@ -422,9 +417,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	cputime_speedadj = pcpu->cputime_speedadj;
 
 #if defined(CONFIG_POWERSUSPEND)	
-	if (suspended == false)
+	if (!power_suspend_active)
 		timer_rate = DEFAULT_TIMER_RATE;
-	else if (suspended == true)
+	else
 		timer_rate = SCREEN_OFF_TIMER_RATE;
 #endif
 	
@@ -437,7 +432,15 @@ static void cpufreq_interactive_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = cpu_get_load(data);	// loadadjfreq / pcpu->target_freq;	
 	pcpu->prev_load = cpu_load;
-	boosted = boost_val || now < boostpulse_endtime || gpu_get_utilization() >= gpu_up_utilization;
+	
+	gpu_load = gpu_get_utilization();
+	if (gpu_load >= gpu_up_utilization)
+	{
+		if (cpu_load < gpu_load)
+			cpu_load = gpu_load;	// give a boost when GPU load is over 80%
+	}
+	
+	boosted = boost_val || now < boostpulse_endtime;
 
 	if (counter < 5) {
 		counter++;
@@ -447,7 +450,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	}
 
 #if defined(CONFIG_POWERSUSPEND)
-	if ((cpu_load >= go_hispeed_load || boosted) && !suspended) {
+	if ((cpu_load >= go_hispeed_load || boosted) && !power_suspend_active) {
 #else
 	if (cpu_load >= go_hispeed_load || boosted) {
 #endif
@@ -689,7 +692,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			}
 
 #if defined(CONFIG_POWERSUSPEND)
-			if (suspended == true)
+			if (power_suspend_active)
 				if (max_freq > screen_off_max) max_freq = screen_off_max;
 #endif
 
@@ -1521,27 +1524,6 @@ static void cpufreq_interactive_nop_timer(unsigned long data)
 {
 }
 
-#if defined(CONFIG_POWERSUSPEND)
-static void interactive_early_suspend(struct power_suspend *handler)
-{
-	suspended = true;
-
-	return;
-}
-
-static void interactive_late_resume(struct power_suspend *handler)
-{
-	suspended = false;
-
-	return;
-}
-
-static struct power_suspend interactive_suspend = {
-	.suspend = interactive_early_suspend,
-	.resume = interactive_late_resume,
-};
-#endif
-
 static int __init cpufreq_intelliactive_init(void)
 {
 	unsigned int i;
@@ -1559,10 +1541,6 @@ static int __init cpufreq_intelliactive_init(void)
 		spin_lock_init(&pcpu->load_lock);
 		init_rwsem(&pcpu->enable_sem);
 	}
-
-#if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&interactive_suspend);
-#endif
 
 	spin_lock_init(&target_loads_lock);
 	spin_lock_init(&speedchange_cpumask_lock);

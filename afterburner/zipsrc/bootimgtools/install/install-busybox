@@ -1,5 +1,0 @@
-#!/tmp/bootimgtools/tools/bash
-tooldir=/tmp/bootimgtools/tools
-box=$tooldir/busybox
-# copy busybox to the ramdisk for initd support
-$box cp $box $tooldir/kernel/ramdisk/sbin

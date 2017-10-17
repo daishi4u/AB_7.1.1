@@ -98,10 +98,10 @@ theme("touchwiz");
 # Initializing Rom Information
 #
 ini_set("rom_name",             "Afterburner N kernel");
-ini_set("rom_version",          "17.10.15.10");
+ini_set("rom_version",          "17.10.16.1");
 ini_set("rom_author",           "Brett Wagner");
 ini_set("rom_device",           "J7 2015 Nougat");
-ini_set("rom_date",             "10/15/17");
+ini_set("rom_date",             "10/16/17");
 
 
 ##
@@ -163,43 +163,6 @@ viewbox(
   #-- Icon
     "@welcome"
 );
- 
-
-###################################################################################################################
-#                                                                                                                 #
-#                                           INSTALLATION DEMO                                                     #
-#                                                                                                                 #
-###################################################################################################################
-
-#
-# STEP 8 - CUSTOMIZE YOUR INSTALLATION
-#
-  #-- IF Installation type = "Custom" Show Customize Selection
-  checkbox(
-    #-- Title
-      "Customize " + ini_get("rom_name") + " v" + ini_get("rom_version") + " Installation",
-	  
-    #-- Sub Title
-      "Select the features you want installed.\n"+
-	  "Select an item in the list below to change how a feature is installed.",
-	  
-    #-- Icon: <AROMA Resource Dir>/icons/personalize.png or <ThemeDir>/icon.personalize.png
-      "@personalize",
-	  
-    #-- Will be saved in /tmp/aroma/customize.prop
-      "kernel.prop",
-	  
-	  #------------------------------------------------[ Checkbox Without Group ]----------------------------------------------#
-	  # TITLE            |  SUBTITLE                                                                           | Initial Value #
-	  #------------------+-------------------------------------------------------------------------------------+---------------#
-
-	  "Features",         "",                                                                                  2,  #-- Group 1. key = "item.1.x"
-     "init.d support",            "Usefull for running custom scripts upon boot (will install busybox as well) ",                          0,
-     "busybox",            "Install busybox in the kernel at /sbin/busybox",                          0
-		
-	  #--------[ Initial Value = 0: Unselected, 1: Selected, 2: Group Item, 3: Not Visible ]---------#
-  );
-  
   
 ###################################################################################################################
 #

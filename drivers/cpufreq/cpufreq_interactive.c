@@ -79,11 +79,6 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
-#if defined(CONFIG_POWERSUSPEND)
-/* boolean for determining screen on/off state */
-static bool suspended = false;
-#endif
-
 #define GPU_UP_UTILIZATION 80
 static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
 
@@ -412,9 +407,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	cputime_speedadj = pcpu->cputime_speedadj;
 
 #if defined(CONFIG_POWERSUSPEND)	
-	if (suspended == false)
+	if (!power_suspend_active)
 		tunables->timer_rate = DEFAULT_TIMER_RATE;
-	else if (suspended == true)
+	else
 		tunables->timer_rate = SCREEN_OFF_TIMER_RATE;
 #endif
 	
@@ -430,7 +425,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	boosted = tunables->boost_val || now < tunables->boostpulse_endtime || gpu_get_utilization() >= gpu_up_utilization;
 
 #if defined(CONFIG_POWERSUSPEND)
-	if ((cpu_load >= tunables->go_hispeed_load || boosted) && !suspended) {
+	if ((cpu_load >= tunables->go_hispeed_load || boosted) && !power_suspend_active) {
 #else
 	if (cpu_load >= tunables->go_hispeed_load || boosted) {
 #endif
@@ -643,9 +638,8 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			}
 
 #if defined(CONFIG_POWERSUSPEND)
-			if (suspended == true)
-				if (max_freq > screen_off_max) 
-					max_freq = screen_off_max;
+			if (power_suspend_active)
+				if (max_freq > screen_off_max) max_freq = screen_off_max;
 #endif
 
 			if (max_freq != pcpu->policy->cur)
@@ -1729,27 +1723,6 @@ static struct notifier_block cpufreq_interactive_cluster0_max_qos_notifier = {
 };
 #endif
 
-#if defined(CONFIG_POWERSUSPEND)
-static void interactive_early_suspend(struct power_suspend *handler)
-{
-	suspended = true;
-
-	return;
-}
-
-static void interactive_late_resume(struct power_suspend *handler)
-{
-	suspended = false;
-
-	return;
-}
-
-static struct power_suspend interactive_suspend = {
-	.suspend = interactive_early_suspend,
-	.resume = interactive_late_resume,
-};
-#endif
-
 static int __init cpufreq_interactive_init(void)
 {
 	unsigned int i;
@@ -1767,10 +1740,6 @@ static int __init cpufreq_interactive_init(void)
 		spin_lock_init(&pcpu->target_freq_lock);
 		init_rwsem(&pcpu->enable_sem);
 	}
-
-#if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&interactive_suspend);
-#endif
 
 	spin_lock_init(&speedchange_cpumask_lock);
 	mutex_init(&gov_lock);

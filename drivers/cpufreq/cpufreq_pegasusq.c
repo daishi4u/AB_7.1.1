@@ -28,7 +28,6 @@
 #include <linux/ktime.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/suspend.h>
 #include <linux/reboot.h>
 #include <linux/powersuspend.h>
 
@@ -63,8 +62,6 @@
 #define FREQ_FOR_RESPONSIVENESS			(1100000)
 
 static unsigned int min_sampling_rate;
-
-static bool suspended = false;
 
 static void do_dbs_timer(struct work_struct *work);
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
@@ -529,7 +526,7 @@ static void do_dbs_timer(struct work_struct *work)
 
 	mutex_lock(&dbs_info->timer_mutex);
 
-	if(!suspended)
+	if(!power_suspend_active)
 		dbs_check_cpu(dbs_info);
 	/* We want all CPUs to do sampling nearly on
 	 * same jiffy
@@ -544,19 +541,6 @@ static void do_dbs_timer(struct work_struct *work)
 	schedule_delayed_work_on(cpu, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
 }
-
-static void pegasusq_early_suspend(struct power_suspend *handler) {
-	suspended = true;
-}
-
-static void pegasusq_late_resume(struct power_suspend *handler) {
-	suspended = false;
-}
-
-static struct power_suspend pegasusq_power_suspend = {
-	.suspend = pegasusq_early_suspend,
-	.resume = pegasusq_late_resume,
-};
 
 static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 {
@@ -678,8 +662,6 @@ static int __init cpufreq_gov_dbs_init(void)
 	ret = cpufreq_register_governor(&cpufreq_gov_pegasusq);
 	if (ret)
 		goto err_reg;
-	
-	register_power_suspend(&pegasusq_power_suspend);
 
 	return ret;
 
@@ -691,7 +673,6 @@ err_reg:
 static void __exit cpufreq_gov_dbs_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_pegasusq);
-	unregister_power_suspend(&pegasusq_power_suspend);
 	kfree(&dbs_tuners_ins);
 }
 

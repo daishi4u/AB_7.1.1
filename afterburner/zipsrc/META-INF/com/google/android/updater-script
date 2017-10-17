@@ -10,70 +10,54 @@ then
     mount("ext4", "EMMC", "/dev/block/platform/13540000.dwmmc0/by-name/USERDATA", "/data", "");
 endif;
 
-ui_print("Extracting boot image tools");
-package_extract_dir("bootimgtools", "/tmp/bootimgtools");
-run_program("/sbin/busybox", "chmod", "-R", "755", "/tmp/bootimgtools");
-package_extract_dir("kernel", "/tmp/bootimgtools/tools/kernel");
-
 set_progress(0.1);
 
-ui_print("Patching boot image");
-run_program("/tmp/bootimgtools/install/extractbootimg");
-
+ui_print("Extracting install data...");
+package_extract_dir("add-ons", "/tmp/add-ons");
 set_progress(0.2);
 
-run_program("/tmp/bootimgtools/install/clean_previous");
-
+ui_print("Cleaning previous installations...");
+run_program("/sbin/busybox", "chmod", "755", "/tmp/add-ons/clean_previous");
+run_program("/tmp/add-ons/clean_previous");
 set_progress(0.3);
 
+ui_print("Flashing Afterburner kernel...");
+package_extract_file("boot.img", "/dev/block/platform/13540000.dwmmc0/by-name/BOOT");
+
 set_progress(0.4);
-
-if file_getprop("/tmp/aroma-data/kernel.prop","item.1.1") == "1"
-then
-    ui_print("Installing init.d support");
-    package_extract_dir("add-ons/initd/ramdisk","/tmp/bootimgtools/tools/kernel/ramdisk");
-    run_program("/tmp/bootimgtools/install/install-initd");
-endif;
-
-set_progress(0.5);
-
-if ((file_getprop("/tmp/aroma-data/kernel.prop","item.1.2") == "1") || (file_getprop("/tmp/aroma-data/kernel.prop","item.1.1") == "1"))
-then
-    ui_print("Installing busybox");
-    run_program("/tmp/bootimgtools/install/install-busybox");
-endif;
 
 set_progress(0.6);
 
 set_progress(0.7);
-
-ui_print("Flashing patched Afterburner boot image...");
-run_program("/tmp/bootimgtools/install/flashbootimg");
 
 set_progress(0.8);
 
 #-- Root
 if file_getprop("/tmp/aroma/root.prop", "selected.0") == "1" then
     ui_print("Installing SuperSU...");
-    package_extract_dir("add-ons/root/supersu", "/tmp/bootimgtools/supersu");
-    run_program("/sbin/busybox", "unzip", "/tmp/bootimgtools/supersu/supersu.zip", "META-INF/com/google/android/*", "-d", "/tmp/bootimgtools/supersu");
-    run_program("/sbin/busybox", "sh", "/tmp/bootimgtools/supersu/META-INF/com/google/android/update-binary", "dummy", "1", "/tmp/bootimgtools/supersu/supersu.zip");
+    run_program("/sbin/busybox", "unzip", "/tmp/add-ons/root/supersu/supersu.zip", "META-INF/com/google/android/*", "-d", "/tmp/add-ons/root/supersu");
+    run_program("/sbin/busybox", "sh", "/tmp/add-ons/root/supersu/META-INF/com/google/android/update-binary", "dummy", "1", "/tmp/add-ons/root/supersu/supersu.zip");
 endif;
 if file_getprop("/tmp/aroma/root.prop", "selected.0") == "2" then
     ui_print("Installing MagiskSU...");
-    package_extract_dir("add-ons/root/magisksu", "/tmp/bootimgtools/magisksu");
-    run_program("/sbin/busybox", "unzip", "/tmp/bootimgtools/magisksu/magisksu.zip", "META-INF/com/google/android/*", "-d", "/tmp/bootimgtools/magisksu");
-    run_program("/sbin/busybox", "sh", "/tmp/bootimgtools/magisksu/META-INF/com/google/android/update-binary", "dummy", "1", "/tmp/bootimgtools/magisksu/magisksu.zip");
+    run_program("/sbin/busybox", "unzip", "/tmp/add-ons/root/magisksu/magisksu.zip", "META-INF/com/google/android/*", "-d", "/tmp/add-ons/root/magisksu");
+    run_program("/sbin/busybox", "sh", "/tmp/add-ons/root/magisksu/META-INF/com/google/android/update-binary", "dummy", "1", "/tmp/add-ons/root/magisksu/magisksu.zip");
 endif;
 
 set_progress(0.9);
 
 ui_print("Cleaning up... ");
-run_program("/sbin/busybox","rm","-rf","/tmp/bootimgtools");
+run_program("/sbin/busybox","rm","-rf","/tmp/add-ons");
 
 ui_print("Unmounting /system and /data");
+if is_mounted("/data")
+then
 unmount("/data");
+endif
+if is_mounted("/system")
+then
 unmount("/system");
+endif
 
 set_progress(1.0);
 
