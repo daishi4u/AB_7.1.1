@@ -1,12 +1,14 @@
 #include <linux/atomic.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/fb.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/suspend.h>
 #include <linux/pm_qos.h>
+
+#if defined(CONFIG_POWERSUSPEND)
+#include <linux/powersuspend.h>
+#endif
 
 #include "cpu_load_metric.h"
 
@@ -24,7 +26,6 @@ enum hstate {
 	H4,
 	H5,
 	H6,
-	H7,
 	MAX_HSTATE,
 };
 
@@ -102,11 +103,6 @@ static struct hotplug_hstate hstate_set[] = {
 		.core_count	= 2,
 		.state		= H6,
 	},
-	[H7] = {
-		.name		= "H7",
-		.core_count	= 1,
-		.state		= H7,
-	},
 };
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
@@ -131,7 +127,6 @@ static DEFINE_MUTEX(hotplug_lock);
 static DEFINE_SPINLOCK(hstate_status_lock);
 
 static atomic_t freq_history[STAY] =  {ATOMIC_INIT(0), ATOMIC_INIT(0)};
-static bool lcd_on = true;
 
 /*
  * If 'state' is less than "MAX_STATE"
@@ -197,14 +192,6 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 	if (!force) {
 		min_state = ctrl_hotplug.min_lock;
 		max_state = ctrl_hotplug.max_lock;
-
-#ifndef CONFIG_EXYNOS7580_QUAD
-		if (lcd_on && (state > H6))
-			state = H6;
-#else
-		if (lcd_on)
-			state = H0;
-#endif
 
 		if (min_state >= 0 && state > min_state)
 			state = min_state;
@@ -376,39 +363,6 @@ static void exynos_work(struct work_struct *dwork)
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
 }
-
-static int fb_state_change(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank = evdata->data;
-
-	if (event == FB_EVENT_BLANK) {
-		switch (*blank) {
-		case FB_BLANK_POWERDOWN:
-			lcd_on = false;
-			mutex_lock(&hotplug_lock);
-			if (ctrl_hotplug.force_hstate == -1) {
-				hotplug_enter_hstate(false, H6);	// turn off all but 2 cores // hotplug_adjust_state(DOWN);
-			}
-			mutex_unlock(&hotplug_lock);
-			break;
-		case FB_BLANK_UNBLANK:
-			lcd_on = true;
-			mutex_lock(&hotplug_lock);
-			if (ctrl_hotplug.force_hstate == -1)
-				hotplug_enter_hstate(true, H0);		// turn on all cores
-			mutex_unlock(&hotplug_lock);
-			break;
-		}
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block fb_block = {
-	.notifier_call = fb_state_change,
-};
 
 #define define_show_state_function(_name) \
 static ssize_t show_##_name(struct device *dev, struct device_attribute *attr, \
@@ -619,35 +573,39 @@ static ssize_t show_time_in_state(struct device *dev,
 	return len;
 }
 
-static int exynos_pm_notify(struct notifier_block *nb, unsigned long event,
-	void *dummy)
+#if defined(CONFIG_POWERSUSPEND)
+static void __cpuinit powersave_resume(struct power_suspend *handler)
 {
 	mutex_lock(&hotplug_lock);
-	if (event == PM_SUSPEND_PREPARE) {
-		ctrl_hotplug.suspended = true;
+	ctrl_hotplug.suspended = false;
+	hotplug_enter_hstate(true, H0);
 
-		atomic_set(&freq_history[UP], 0);
-		atomic_set(&freq_history[DOWN], 0);
+	if (ctrl_hotplug.force_hstate == -1)
+		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 
-		mutex_unlock(&hotplug_lock);
-
-		cancel_delayed_work_sync(&exynos_hotplug);
-	} else if (event == PM_POST_SUSPEND) {
-		ctrl_hotplug.suspended = false;
-
-		if (ctrl_hotplug.force_hstate == -1)
-			queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-					msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-		mutex_unlock(&hotplug_lock);
-	}
-
-	return NOTIFY_OK;
+	mutex_unlock(&hotplug_lock);
 }
 
-static struct notifier_block exynos_cpu_pm_notifier = {
-	.notifier_call = exynos_pm_notify,
+static void __cpuinit powersave_suspend(struct power_suspend *handler)
+{
+	mutex_lock(&hotplug_lock);
+	hotplug_enter_hstate(false, H6);
+	ctrl_hotplug.suspended = true;
+
+	atomic_set(&freq_history[UP], 0);
+	atomic_set(&freq_history[DOWN], 0);
+
+	mutex_unlock(&hotplug_lock);
+
+	cancel_delayed_work_sync(&exynos_hotplug);
+}
+
+static struct power_suspend __refdata powersave_powersuspend = {
+  .suspend = powersave_suspend,
+  .resume = powersave_resume,
 };
+#endif /* (defined(CONFIG_POWERSUSPEND)... */
 
 void exynos_dm_hotplug_disable(void)
 {
@@ -718,26 +676,14 @@ static int __init dm_cluster_hotplug_init(void)
 		goto err_sys;
 	}
 
-	ret = fb_register_client(&fb_block);
-	if (ret) {
-		pr_err("Failed to register fb notifier\n");
-		goto err_fb;
-	}
-
-	ret = register_pm_notifier(&exynos_cpu_pm_notifier);
-	if (ret) {
-		pr_err("Faile to register pm notifier\n");
-		goto err_pm;
-	}
+#if defined(CONFIG_POWERSUSPEND)
+	register_power_suspend(&powersave_powersuspend);
+#endif
 
 	queue_delayed_work_on(0, khotplug_wq, &start_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
 
 	return 0;
 
-err_pm:
-	fb_unregister_client(&fb_block);
-err_fb:
-	sysfs_remove_group(&cpu_subsys.dev_root->kobj, &clusterhotplug_attr_group);
 err_sys:
 	destroy_workqueue(khotplug_wq);
 err_wq:
