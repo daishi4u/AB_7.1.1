@@ -275,7 +275,8 @@ static enum hrtimer_restart row_idle_hrtimer_fn(struct hrtimer *hr_timer)
 	if (!rd->nr_reqs[READ] && !rd->nr_reqs[WRITE])
 		row_log(rd->dispatch_queue, "No requests in scheduler");
 	else
-		kblockd_schedule_work(&read_data->idle_work);
+		kblockd_schedule_work(rd->dispatch_queue,
+			&read_data->idle_work);
 	return HRTIMER_NORESTART;
 }
 
@@ -334,8 +335,7 @@ static void row_add_request(struct request_queue *q,
 	list_add_tail(&rq->queuelist, &rqueue->fifo);
 	rd->nr_reqs[rq_data_dir(rq)]++;
 	rqueue->nr_req++;
-
-	rq->fifo_time = jiffies; /* for statistics*/
+	rq_set_fifo_time(rq, jiffies); /* for statistics*/
 
 	if (rq->cmd_flags & REQ_URGENT) {
 		WARN_ON(1);
