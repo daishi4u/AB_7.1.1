@@ -5,10 +5,17 @@ MYOUT=$KERNELDIR/arch/arm64/boot
 ABDIR=$KERNELDIR/afterburner
 MYTOOLS=$ABDIR/mkdtbhbootimg/bin
 
-# copy a temp ramdisk to make a temp boot image
+cd $MYOUT
+
+if [ ! -e Image ]
+then
+	echo "Afterburner build failed"
+	exit 1
+fi
+
+# copy a the ramdisk
 cp $ABDIR/ramdisk/boot.img-ramdisk.gz $MYOUT/
 
-cd $MYOUT
 mkdir $MYOUT/j7e3g
 
 # Compile the dt for J7 3g as its the only one that works correctly
@@ -31,6 +38,7 @@ mv boot-new2.img $ABDIR/zipsrc/boot.img
 # cleanup
 rm -rf $MYOUT/j7e3g/
 rm $MYOUT/Image
+rm $MYOUT/Image.gz
 rm $MYOUT/Image.gz-dtb
 rm $MYOUT/boot.img-ramdisk.gz
 

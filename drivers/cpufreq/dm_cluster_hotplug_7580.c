@@ -300,15 +300,13 @@ static enum action select_up_down(void)
 	num_online = num_online_cpus();
 
 	if ((((c0_freq < up_freq) && (c0_freq > down_freq)) ||
-	    ((c1_freq < up_freq && c1_freq > down_freq))) && !((num_online * ctrl_hotplug.down_tasks) >= nr)) {
+	    ((c1_freq < up_freq && c1_freq > down_freq))) && ((num_online * ctrl_hotplug.down_tasks) >= nr)) {
 		atomic_set(&freq_history[UP], 0);
 		atomic_set(&freq_history[DOWN], 0);
-	}
-
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || ((num_online * ctrl_hotplug.down_tasks) >= nr)) {		// down_tasks / 4
+	} else if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) && ((num_online * ctrl_hotplug.down_tasks) > nr) && !((gpu_get_utilization() >= ctrl_hotplug.gpu_load_threshold) || (cpu_get_avg_load() >= ctrl_hotplug.cpu_load_threshold))) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * ctrl_hotplug.up_tasks) < nr) || (gpu_get_utilization() >= ctrl_hotplug.gpu_load_threshold) || (cpu_get_avg_load() >= ctrl_hotplug.cpu_load_threshold)) {
+	} else /* if ((c0_freq >= up_freq) || (c1_freq >= up_freq) || ((num_online * ctrl_hotplug.up_tasks) < nr) || (gpu_get_utilization() >= ctrl_hotplug.gpu_load_threshold) || (cpu_get_avg_load() >= ctrl_hotplug.cpu_load_threshold)) */ {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
 	}
