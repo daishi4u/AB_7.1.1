@@ -1085,8 +1085,7 @@ static struct bfq_queue *bfq_get_next_queue(struct bfq_data *bfqd)
 	return bfqq;
 }
 
-<<<<<<< HEAD
-=======
+
 /*
  * Forced extraction of the given queue.
  */
@@ -1115,7 +1114,6 @@ static void bfq_get_next_queue_forced(struct bfq_data *bfqd,
 	return;
 }
 
->>>>>>> 9354f53... block: BFQ scheduling algorithm
 static void __bfq_bfqd_reset_in_service(struct bfq_data *bfqd)
 {
 	if (bfqd->in_service_bic != NULL) {
