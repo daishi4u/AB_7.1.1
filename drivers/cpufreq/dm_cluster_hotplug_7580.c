@@ -5,7 +5,6 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/pm_qos.h>
 
 #if defined(CONFIG_POWERSUSPEND)
 #include <linux/powersuspend.h>
@@ -47,13 +46,10 @@ struct exynos_hotplug_ctrl {
 	ktime_t last_time;
 	ktime_t last_check_time;
 	unsigned int sampling_rate;
-	unsigned int down_freq;
-	unsigned int up_freq;
 	unsigned int up_threshold;
 	unsigned int down_threshold;
 	unsigned int up_tasks;
 	unsigned int down_tasks;
-	unsigned int down_freq_limit;
 #if defined(HOTPLUG_BOOSTED)
 	unsigned int gpu_load_threshold;
 	unsigned int cpu_load_threshold;
@@ -120,14 +116,12 @@ static struct hotplug_hstate hstate_set[] = {
 #define WAKE_UP_STATE			H0
 #define AWAKE_SAMPLING_RATE 	100		// 100ms (Stock)
 #define ASLEEP_SAMPLING_RATE 	1000	// 1s
-#define CPU_DOWN_LOAD			50		// If load is less than 50 percent then it will turn off cores
-#define CPU_UP_LOAD				90
+#define CPU_DOWN_LOAD			25		// If load is less than 25 percent then it will turn off cores
+#define CPU_UP_LOAD				60
 #define GPU_UP_LOAD				80
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = AWAKE_SAMPLING_RATE,		/* ms */
-	.down_freq = 800000,		/* MHz */
-	.up_freq = 1300000,		/* MHz */
 	.up_threshold = 3,
 	.down_threshold = 3,
 	.up_tasks = 2,
@@ -137,7 +131,6 @@ static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.max_lock = -1,
 	.cur_hstate = H0,
 	.old_state = H0,
-	.down_freq_limit = 300000,
 #if defined(HOTPLUG_BOOSTED)
 	.gpu_load_threshold = GPU_UP_LOAD,
 	.cpu_load_threshold = CPU_UP_LOAD,
@@ -247,58 +240,20 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 static enum action select_up_down(void)
 {
 	int up_threshold, down_threshold;
-	unsigned int down_freq, up_freq, cpu_load;
-	unsigned int c0_freq, c1_freq;
+	unsigned int cpu_load;
 	int nr, num_online;
 	bool boosted = false;
 
 	nr = nr_running();
 
-#ifndef CONFIG_EXYNOS7580_QUAD
-	c0_freq = cpufreq_quick_get(0);	/* 0 : first cpu number for Cluster 0 */
-	c1_freq = cpufreq_quick_get(4); /* 4 : first cpu number for Cluster 1 */
-#else
-	c0_freq = cpufreq_quick_get(0);	/* 0 : first cpu number for Cluster 0 */
-	c1_freq = c0_freq;
-#endif
-
 	up_threshold = ctrl_hotplug.up_threshold;
 	down_threshold = ctrl_hotplug.down_threshold;
-
-	/* In the case of Hotplug-outted, and thermal throttled.
-		up_freq = min(ctrl_hotplug.up_freq, pm_qos_max)
-		up_freq = max(up_freq, down_freq)
-	*/
-	if(ctrl_hotplug.cur_hstate > H0) {
-		/*
-			up_freq is less than ctrl_hotplug.up_freq (1.3GHz)
-		*/
-		up_freq = pm_qos_request(PM_QOS_CLUSTER0_FREQ_MAX);
-		up_freq = (ctrl_hotplug.up_freq > up_freq) \
-			? (up_freq) : (ctrl_hotplug.up_freq);
-
-		/*
-			down_freq is basically up_freq * 3 / 4
-			but up_freq *3/4 > ctrl_hotplug.down_freq(800)
-			    use 800MHz
-
-			and up_freq *3/4 is more than down_freq_limit (400MHz)
-		*/
-		down_freq = (up_freq * 3) / 4;
-		down_freq = (down_freq > ctrl_hotplug.down_freq) \
-			? (ctrl_hotplug.down_freq) : (down_freq);
-		down_freq = (down_freq > ctrl_hotplug.down_freq_limit)  \
-			? (down_freq) : (ctrl_hotplug.down_freq_limit);
-	} else {
-		up_freq = ctrl_hotplug.up_freq;
-		down_freq = ctrl_hotplug.down_freq;
-	}
 	
 	num_online = num_online_cpus();
 	cpu_load = cpu_get_avg_load();
 	
 #if defined(HOTPLUG_BOOSTED)
-	boosted = ((gpu_get_load() >= ctrl_hotplug.gpu_load_threshold) || (cpu_load >= ctrl_hotplug.cpu_load_threshold));
+	boosted = (gpu_get_load() >= ctrl_hotplug.gpu_load_threshold);
 #endif
 
 	if (((num_online * ctrl_hotplug.down_tasks) >= nr)
@@ -306,15 +261,14 @@ static enum action select_up_down(void)
 			&& !boosted
 #endif
 			) {
-		if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || cpu_load <= CPU_DOWN_LOAD) {
+		if (cpu_load <= CPU_DOWN_LOAD) {
 			atomic_inc(&freq_history[DOWN]);
 			atomic_set(&freq_history[UP], 0);
-		} else if (((c0_freq < up_freq) && (c0_freq > down_freq)) ||
-				((c1_freq < up_freq && c1_freq > down_freq))) {
+		} else {
 			atomic_set(&freq_history[UP], 0);
 			atomic_set(&freq_history[DOWN], 0);
 		}
-	} else if ((((c0_freq >= up_freq) || (c1_freq >= up_freq)) && ((num_online * ctrl_hotplug.up_tasks) <= nr)) 
+	} else if (((cpu_load >= CPU_UP_LOAD) && ((num_online * ctrl_hotplug.up_tasks) <= nr)) 
 #if defined(HOTPLUG_BOOSTED)
 			|| boosted
 #endif
@@ -404,12 +358,6 @@ define_store_state_function(down_threshold)
 
 define_show_state_function(sampling_rate)
 define_store_state_function(sampling_rate)
-
-define_show_state_function(down_freq)
-define_store_state_function(down_freq)
-
-define_show_state_function(up_freq)
-define_store_state_function(up_freq)
 
 define_show_state_function(up_tasks)
 define_store_state_function(up_tasks)
@@ -599,8 +547,6 @@ void exynos_dm_hotplug_enable(void)
 static DEVICE_ATTR(up_threshold, S_IRUGO | S_IWUSR, show_up_threshold, store_up_threshold);
 static DEVICE_ATTR(down_threshold, S_IRUGO | S_IWUSR, show_down_threshold, store_down_threshold);
 static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
-static DEVICE_ATTR(down_freq, S_IRUGO | S_IWUSR, show_down_freq, store_down_freq);
-static DEVICE_ATTR(up_freq, S_IRUGO | S_IWUSR, show_up_freq, store_up_freq);
 static DEVICE_ATTR(up_tasks, S_IRUGO | S_IWUSR, show_up_tasks, store_up_tasks);
 static DEVICE_ATTR(down_tasks, S_IRUGO | S_IWUSR, show_down_tasks, store_down_tasks);
 static DEVICE_ATTR(force_hstate, S_IRUGO | S_IWUSR, show_force_hstate, store_force_hstate);
@@ -614,8 +560,6 @@ static struct attribute *clusterhotplug_default_attrs[] = {
 	&dev_attr_up_threshold.attr,
 	&dev_attr_down_threshold.attr,
 	&dev_attr_sampling_rate.attr,
-	&dev_attr_down_freq.attr,
-	&dev_attr_up_freq.attr,
 	&dev_attr_up_tasks.attr,
 	&dev_attr_down_tasks.attr,
 	&dev_attr_force_hstate.attr,
