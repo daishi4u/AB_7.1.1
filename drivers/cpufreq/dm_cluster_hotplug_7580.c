@@ -11,7 +11,7 @@
 #include <linux/powersuspend.h>
 #endif
 
-// #define HOTPLUG_BOOSTED
+#define HOTPLUG_BOOSTED
 
 #if defined(HOTPLUG_BOOSTED)
 #include "cpu_load_metric.h"
@@ -27,9 +27,6 @@ enum hstate {
 	H1,
 	H2,
 	H3,
-	H4,
-	H5,
-	H6,
 	MAX_HSTATE,
 };
 
@@ -81,44 +78,32 @@ static struct hotplug_hstate hstate_set[] = {
 	},
 	[H1] = {
 		.name		= "H1",
-		.core_count	= 7,
+		.core_count	= NR_CPUS / 2,
 		.state		= H1,
 	},
 	[H2] = {
 		.name		= "H2",
-		.core_count	= 6,
+		.core_count	= NR_CPUS / 4,
 		.state		= H2,
 	},
 	[H3] = {
 		.name		= "H3",
-		.core_count	= 5,
-		.state		= H3,
-	},
-	[H4] = {
-		.name		= "H4",
-		.core_count	= 4,
-		.state		= H4,
-	},
-	[H5] = {
-		.name		= "H5",
-		.core_count	= 3,
-		.state		= H5,
-	},
-	[H6] = {
-		.name		= "H6",
-		.core_count	= 2,
-		.state		= H6,
+		.core_count	= 1,
+		.state		= H2,
 	},
 };
+
+#define SUSPENDED_MAX_STATE H2
+#define SCREEN_ON_MIN_STATE H1
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = 100,		/* ms */
 	.down_freq = 800000,		/* MHz */
 	.up_freq = 1300000,		/* MHz */
-	.up_threshold = 2,
+	.up_threshold = 3,
 	.down_threshold = 3,
-	.up_tasks = 2, // 2 times online cpus (4 cores online)
-	.down_tasks = 1, // 1 times online cpus (8 cores online)
+	.up_tasks = 8,
+	.down_tasks = 6,
 	.force_hstate = -1,
 	.min_lock = -1,
 	.max_lock = -1,
@@ -194,7 +179,7 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 {
 	int min_state, max_state;
 
-	if (ctrl_hotplug.suspended)
+	if (ctrl_hotplug.suspended && state < SUSPENDED_MAX_STATE)
 		return;
 
 	if (!force) {
@@ -207,6 +192,10 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 		if (max_state > 0 && state < max_state)
 			state = max_state;
 	}
+	
+	// min state when not suspended is SCREEN_ON_MIN_STATE
+	if (!ctrl_hotplug.suspended && state > H1)
+		state = SCREEN_ON_MIN_STATE;
 
 	if (ctrl_hotplug.old_state == state)
 		return;
@@ -260,7 +249,7 @@ static enum action select_up_down(void)
 	int up_threshold, down_threshold;
 	unsigned int down_freq, up_freq;
 	unsigned int c0_freq, c1_freq;
-	int nr, num_online;
+	int nr;
 	bool boosted = false;
 
 	nr = nr_running();
@@ -304,21 +293,19 @@ static enum action select_up_down(void)
 		up_freq = ctrl_hotplug.up_freq;
 		down_freq = ctrl_hotplug.down_freq;
 	}
-
-	num_online = num_online_cpus();
 	
 #if defined(HOTPLUG_BOOSTED)
 	boosted = ((gpu_get_load() >= ctrl_hotplug.gpu_load_threshold) || (cpu_get_avg_load() >= ctrl_hotplug.cpu_load_threshold));
 #endif
 
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || ((num_online * ctrl_hotplug.down_tasks) > nr)
+	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || (ctrl_hotplug.down_tasks >= nr)
 #if defined(HOTPLUG_BOOSTED)
 			&& !boosted
 #endif
 			) {		// down_tasks / 4
 		atomic_inc(&freq_history[DOWN]);
 		atomic_set(&freq_history[UP], 0);
-	} else if (((c0_freq >= up_freq) || (c1_freq >= up_freq) && ((num_online * ctrl_hotplug.up_tasks) < nr)) 
+	} else if (((c0_freq >= up_freq) || (c1_freq >= up_freq) && (ctrl_hotplug.up_tasks <= nr)) 
 #if defined(HOTPLUG_BOOSTED)
 			|| boosted
 #endif
@@ -349,8 +336,8 @@ static enum hstate hotplug_adjust_state(enum action move)
 		if (state >= MAX_HSTATE)
 			state = MAX_HSTATE - 1;
 	} else if (move != STAY){
-		state = state / 2;		// will go from 2->5->7->8 CPUs online
-		if(state < 0)			// we "shouldn't" need this, but just in case
+		state = state--;
+		if(state < 0)
 			state = 0;
 	} 
 
@@ -609,8 +596,8 @@ static void __cpuinit powersave_resume(struct power_suspend *handler)
 static void __cpuinit powersave_suspend(struct power_suspend *handler)
 {
 	mutex_lock(&hotplug_lock);
-	hotplug_enter_hstate(false, H6);
 	ctrl_hotplug.suspended = true;
+	hotplug_enter_hstate(false, SUSPENDED_MAX_STATE);
 
 	atomic_set(&freq_history[UP], 0);
 	atomic_set(&freq_history[DOWN], 0);
