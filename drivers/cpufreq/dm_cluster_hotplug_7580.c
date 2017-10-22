@@ -311,7 +311,7 @@ static enum action select_up_down(void)
 	boosted = ((gpu_get_load() >= ctrl_hotplug.gpu_load_threshold) || (cpu_get_avg_load() >= ctrl_hotplug.cpu_load_threshold));
 #endif
 
-	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) && ((num_online * ctrl_hotplug.down_tasks) > nr)
+	if (((c1_freq <= down_freq) && (c0_freq <= down_freq)) || ((num_online * ctrl_hotplug.down_tasks) > nr)
 #if defined(HOTPLUG_BOOSTED)
 			&& !boosted
 #endif
