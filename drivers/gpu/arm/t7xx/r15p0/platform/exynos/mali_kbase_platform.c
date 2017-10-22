@@ -70,6 +70,19 @@ int gpu_get_utilization(void)
 	return util;
 }
 
+int gpu_get_load(void)
+{
+	int util, clock;
+	struct kbase_device *kbdev = pkbdev;
+	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+	
+	clock = platform->cur_clock;
+	util = gpu_get_utilization();
+	
+	return (clock * util) / platform->gpu_max_clock;
+	
+}
+
 #ifdef CONFIG_MALI_EXYNOS_TRACE
 struct kbase_trace exynos_trace_buf[KBASE_TRACE_SIZE];
 extern const struct file_operations kbasep_trace_debugfs_fops;

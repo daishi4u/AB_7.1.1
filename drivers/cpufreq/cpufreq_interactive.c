@@ -79,8 +79,8 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
-#define GPU_UP_UTILIZATION 80
-static unsigned int gpu_up_utilization = GPU_UP_UTILIZATION;
+#define GPU_UP_LOAD 80
+static unsigned int gpu_up_load = GPU_UP_LOAD;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
@@ -422,7 +422,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = cpu_get_load(data);		// loadadjfreq / pcpu->policy->cur;	
-	boosted = tunables->boost_val || now < tunables->boostpulse_endtime || gpu_get_utilization() >= gpu_up_utilization;
+	boosted = tunables->boost_val || now < tunables->boostpulse_endtime || gpu_get_load() >= gpu_up_load;
 
 #if defined(CONFIG_POWERSUSPEND)
 	if ((cpu_load >= tunables->go_hispeed_load || boosted) && !power_suspend_active) {
@@ -916,13 +916,13 @@ static ssize_t store_go_hispeed_load(struct cpufreq_interactive_tunables
 	return count;
 }
 
-static ssize_t show_gpu_up_utilization(struct kobject *kobj,
+static ssize_t show_gpu_up_load(struct kobject *kobj,
 				     struct attribute *attr, char *buf)
 {
-	return sprintf(buf, "%lu\n", gpu_up_utilization);
+	return sprintf(buf, "%lu\n", gpu_up_load);
 }
 
-static ssize_t store_gpu_up_utilization(struct kobject *kobj,
+static ssize_t store_gpu_up_load(struct kobject *kobj,
 			struct attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -931,12 +931,12 @@ static ssize_t store_gpu_up_utilization(struct kobject *kobj,
 	ret = strict_strtoul(buf, 0, &val);
 	if (ret < 0 || ret > 100)
 		return ret;
-	gpu_up_utilization = val;
+	gpu_up_load = val;
 	return count;
 }
 
-static struct global_attr gpu_up_utilization_attr = __ATTR(gpu_up_utilization, 0644,
-		show_gpu_up_utilization, store_gpu_up_utilization);
+static struct global_attr gpu_up_load_attr = __ATTR(gpu_up_load, 0644,
+		show_gpu_up_load, store_gpu_up_load);
 
 
 static ssize_t show_min_sample_time(struct cpufreq_interactive_tunables
@@ -1169,7 +1169,7 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&above_hispeed_delay_gov_sys.attr,
 	&hispeed_freq_gov_sys.attr,
 	&go_hispeed_load_gov_sys.attr,
-	&gpu_up_utilization_attr.attr,
+	&gpu_up_load_attr.attr,
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,

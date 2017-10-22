@@ -431,6 +431,7 @@ bool balance_init(struct kbase_device *kbdev);
 int exynos_gpu_init_hw(void *dev);
 
 int gpu_get_utilization(void);
+int gpu_get_load(void);
 
 #ifdef CONFIG_MALI_DVFS_USER
 bool gpu_dvfs_process_job(void *pkatom);
