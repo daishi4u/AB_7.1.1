@@ -165,7 +165,7 @@ static void __ref hotplug_cpu(enum hstate state)
 	/* Check the Online CPU supposed to be online or offline */
 	for (i = 0 ; i < NR_CPUS ; i++) {
 		num_online = num_online_cpus();
-	
+		
 		if(num_online == cnt_target) 
 		{
 			break;
@@ -246,7 +246,7 @@ static enum action select_up_down(void)
 {
 	int up_threshold, down_threshold;
 	unsigned int cpu_load;
-	int nr, num_online;
+	int nr, num_online, cpu;
 	bool boosted = false;
 
 	nr = nr_running();
@@ -255,6 +255,11 @@ static enum action select_up_down(void)
 	down_threshold = ctrl_hotplug.down_threshold;
 	
 	num_online = num_online_cpus();
+	
+	for_each_online_cpu(cpu) {
+		update_cpu_load_metric(cpu, false);
+	}
+	
 	cpu_load = cpu_get_avg_load();
 	
 #if defined(HOTPLUG_BOOSTED)

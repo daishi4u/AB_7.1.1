@@ -34,6 +34,7 @@ void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time, struct 
 void cpu_load_metric_get(int *load, int *freq);
 unsigned int cpu_get_load(int cpu);
 unsigned int cpu_get_avg_load(void);
+u64 update_cpu_load_metric(int cpu, bool io_is_busy);
 int get_least_busy_cpu(void);
 void get_cluster_stats(struct cluster_stats *clstats);
 

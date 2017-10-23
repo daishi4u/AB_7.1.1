@@ -32,11 +32,12 @@ struct cpu_load
 	unsigned int frequency;
 	unsigned int load;
 	u64 last_update;
+	u64 idle_time;
 };
 static DEFINE_PER_CPU(struct cpu_load, cpuload);
 
-void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time,
-		       struct cpufreq_policy *policy)
+void update_cpu_metric_f(int cpu, u64 now, u64 delta_idle, u64 delta_time,
+				unsigned int freq)
 {
 	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
 	unsigned int load;
@@ -52,11 +53,36 @@ void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time,
 		load = div64_u64((100 * (delta_time - delta_idle)), delta_time);
 
 	pcpuload->load = load;
-	pcpuload->frequency = policy->cur;
+	pcpuload->frequency = freq;
 	pcpuload->last_update = now;
 #ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
-	trace_printk("cpu_load: cpu: %d freq: %u load: %u\n", cpu, policy->cur, load);
+	trace_printk("cpu_load: cpu: %d freq: %u load: %u\n", cpu, freq, load);
 #endif
+}
+
+void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time,
+		       struct cpufreq_policy *policy)
+{
+	update_cpu_metric_f(cpu, now, delta_idle, delta_time, policy->cur);
+}
+
+u64 update_cpu_load_metric(int cpu, bool io_is_busy)
+{
+	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
+	u64 now;
+	u64 now_idle;
+	unsigned int delta_idle;
+	unsigned int delta_time;
+
+	now_idle = get_cpu_idle_time(cpu, &now, io_is_busy);
+	delta_idle = (unsigned int)(now_idle - pcpuload->idle_time);
+	delta_time = (unsigned int)(now - pcpuload->last_update);
+	
+	update_cpu_metric_f(cpu, now, delta_idle, delta_time, cpufreq_quick_get(cpu));
+
+	pcpuload->idle_time = now_idle;
+	pcpuload->last_update = now;
+	return now;
 }
 
 void cpu_load_metric_get(int *load, int *freq)
