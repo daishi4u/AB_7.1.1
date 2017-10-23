@@ -23,6 +23,8 @@
 
 #include <trace/events/power.h>
 
+#include <linux/powersuspend.h>
+
 #include "cpu_load_metric.h"
 
 struct cpu_load
@@ -73,25 +75,50 @@ void cpu_load_metric_get(int *load, int *freq)
 	*freq = _freq;
 }
 
-int cpu_get_load(int cpu)
+unsigned int cpu_get_load(int cpu)
 {
 	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
 
 	return pcpuload->load;	
 }
 
-int cpu_get_avg_load(void)
+unsigned int cpu_get_avg_load(void)
 {
-	int avg_load = 0;
-	int cpu;
+	unsigned int avg_load = 0;
+	int cpu, online_cpus = 0;
 	
 	for_each_online_cpu(cpu) {
 		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
 
 		avg_load += pcpuload->load;
+		online_cpus++;
 	}
 	
-	return avg_load / num_online_cpus();
+	return avg_load / online_cpus;
+}
+
+int get_least_busy_cpu(void)
+{
+	int least_busy_cpu = 1, cpu, min_cpu = 1;
+	unsigned int least_busy_cpu_load = 100, curr_load;
+	
+	if(power_suspend_active)
+		min_cpu = 0;
+	
+	for_each_online_cpu(cpu)
+	{
+		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
+		
+		curr_load = pcpuload->load;
+		
+		if((cpu > min_cpu) && (curr_load <= least_busy_cpu_load))
+		{
+			least_busy_cpu_load = curr_load;
+			least_busy_cpu = cpu;
+		}
+	}
+	
+	return least_busy_cpu;
 }
 
 static void get_cluster_stat(struct cluster_stats *cl)
