@@ -266,7 +266,7 @@ static enum action select_up_down(void)
 	boosted = (gpu_get_load() >= ctrl_hotplug.gpu_load_threshold);
 #endif
 
-	if (((num_online * ctrl_hotplug.down_tasks) >= nr)
+	if (((num_online * ctrl_hotplug.down_tasks) > nr)
 #if defined(HOTPLUG_BOOSTED)
 			&& !boosted
 #endif
@@ -278,7 +278,7 @@ static enum action select_up_down(void)
 			atomic_set(&freq_history[UP], 0);
 			atomic_set(&freq_history[DOWN], 0);
 		}
-	} else if (((cpu_load >= CPU_UP_LOAD) && ((num_online * ctrl_hotplug.up_tasks) <= nr)) 
+	} else if (((cpu_load >= CPU_UP_LOAD) && ((num_online * ctrl_hotplug.up_tasks) < nr)) 
 #if defined(HOTPLUG_BOOSTED)
 			|| boosted
 #endif
