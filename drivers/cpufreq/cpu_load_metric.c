@@ -81,7 +81,6 @@ u64 update_cpu_load_metric(int cpu)
 	update_cpu_metric_f(cpu, now, delta_idle, delta_time, cpufreq_quick_get(cpu));
 
 	pcpuload->prev_idle_time = now_idle;
-	pcpuload->prev_idle_timestamp = now;
 	return now;
 }
 
@@ -124,10 +123,11 @@ unsigned int cpu_get_avg_load(void)
 	
 	avg_load = ((100 * nr) + avg_load) / (2 * online_cpus);
 	
-	if (avg_load > 100)
-		avg_load = 100;
+	// we'll use a load over 100 to automatically hotplug in another cpu
+	//if (avg_load > 100)
+	//	avg_load = 100;
 	
-	return avg_load / online_cpus;
+	return avg_load;
 }
 
 int get_least_busy_cpu(void)

@@ -231,16 +231,22 @@ static enum action select_up_down(void)
 	down_threshold = ctrl_hotplug.down_threshold;
 	
 	cpu_load = cpu_get_avg_load();
-
-	if (cpu_load <= ctrl_hotplug.cpu_down_load) {
-		atomic_inc(&freq_history[DOWN]);
-		atomic_set(&freq_history[UP], 0);
-	} else if (cpu_load >= ctrl_hotplug.cpu_up_load) {
-		atomic_inc(&freq_history[UP]);
+	
+	if(cpu_load > 100) {
 		atomic_set(&freq_history[DOWN], 0);
+		atomic_set(&freq_history[UP], up_threshold + 1);
 	} else {
-		atomic_set(&freq_history[UP], 0);
-		atomic_set(&freq_history[DOWN], 0);
+
+		if (cpu_load <= ctrl_hotplug.cpu_down_load) {
+			atomic_inc(&freq_history[DOWN]);
+			atomic_set(&freq_history[UP], 0);
+		} else if (cpu_load >= ctrl_hotplug.cpu_up_load) {
+			atomic_inc(&freq_history[UP]);
+			atomic_set(&freq_history[DOWN], 0);
+		} else {
+			atomic_set(&freq_history[UP], 0);
+			atomic_set(&freq_history[DOWN], 0);
+		}
 	}
 
 	if (atomic_read(&freq_history[UP]) > up_threshold)
