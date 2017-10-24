@@ -10,12 +10,7 @@
 #include <linux/powersuspend.h>
 #endif
 
-#define HOTPLUG_BOOSTED
-
-#if defined(HOTPLUG_BOOSTED)
 #include "cpu_load_metric.h"
-#include <../drivers/gpu/arm/t7xx/r15p0/platform/exynos/mali_kbase_platform.h>
-#endif
 
 static struct delayed_work exynos_hotplug;
 static struct workqueue_struct *khotplug_wq;
@@ -28,7 +23,6 @@ enum hstate {
 	H4,
 	H5,
 	H6,
-	H7,
 	MAX_HSTATE,
 };
 
@@ -48,12 +42,8 @@ struct exynos_hotplug_ctrl {
 	unsigned int sampling_rate;
 	unsigned int up_threshold;
 	unsigned int down_threshold;
-	unsigned int up_tasks;
-	unsigned int down_tasks;
-#if defined(HOTPLUG_BOOSTED)
-	unsigned int gpu_load_threshold;
-	unsigned int cpu_load_threshold;
-#endif
+	unsigned int cpu_up_load;
+	unsigned int cpu_down_load;
 	int max_lock;
 	int min_lock;
 	int force_hstate;
@@ -104,37 +94,26 @@ static struct hotplug_hstate hstate_set[] = {
 		.core_count	= 2,
 		.state		= H6,
 	},
-	[H7] = {
-		.name		= "H7",
-		.core_count	= 1,
-		.state		= H7,
-	},
 };
 
-#define SUSPENDED_MIN_STATE 	H6
-#define SCREEN_ON_MAX_STATE 	H6
+#define SUSPENDED_STATE	 		H6
+#define SCREEN_ON_MAX_STATE 	H4
 #define WAKE_UP_STATE			H0
-#define AWAKE_SAMPLING_RATE 	100		// 100ms (Stock)
-#define ASLEEP_SAMPLING_RATE 	1000	// 1s
+#define SAMPLING_RATE 			100		// 100ms (Stock)
 #define CPU_DOWN_LOAD			25		// If load is less than 25 percent then it will turn off cores
 #define CPU_UP_LOAD				60
-#define GPU_UP_LOAD				80
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
-	.sampling_rate = AWAKE_SAMPLING_RATE,		/* ms */
+	.sampling_rate = SAMPLING_RATE,		/* ms */
 	.up_threshold = 3,
 	.down_threshold = 3,
-	.up_tasks = 2,
-	.down_tasks = 1,
+	.cpu_up_load = CPU_UP_LOAD,
+	.cpu_down_load = CPU_DOWN_LOAD,
 	.force_hstate = -1,
 	.min_lock = -1,
 	.max_lock = -1,
 	.cur_hstate = H0,
 	.old_state = H0,
-#if defined(HOTPLUG_BOOSTED)
-	.gpu_load_threshold = GPU_UP_LOAD,
-	.cpu_load_threshold = CPU_UP_LOAD,
-#endif
 };
 
 static DEFINE_MUTEX(hotplug_lock);
@@ -205,6 +184,9 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 {
 	int min_state, max_state;
 
+	if (power_suspend_active && state < SUSPENDED_STATE)
+		return;
+
 	if (!force) {
 		min_state = ctrl_hotplug.min_lock;
 		max_state = ctrl_hotplug.max_lock;
@@ -215,12 +197,6 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 		if (max_state > 0 && state < max_state)
 			state = max_state;
 	}
-	
-	// min state when not suspended is SCREEN_ON_MAX_STATE
-	if (!power_suspend_active && state > SCREEN_ON_MAX_STATE)
-		state = SCREEN_ON_MAX_STATE;
-	else if (power_suspend_active && state < SUSPENDED_MIN_STATE)
-		state = SUSPENDED_MIN_STATE;
 
 	if (ctrl_hotplug.old_state == state)
 		return;
@@ -244,48 +220,28 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 
 static enum action select_up_down(void)
 {
-	int up_threshold, down_threshold;
 	unsigned int cpu_load;
-	int nr, num_online, cpu;
-	bool boosted = false;
-
-	nr = nr_running();
-
+	int cpu, up_threshold, down_threshold;
+	
+	for_each_online_cpu(cpu) {
+		update_cpu_load_metric(cpu);
+	}
+	
 	up_threshold = ctrl_hotplug.up_threshold;
 	down_threshold = ctrl_hotplug.down_threshold;
 	
-	num_online = num_online_cpus();
-	
-	for_each_online_cpu(cpu) {
-		update_cpu_load_metric(cpu, false);
-	}
-	
 	cpu_load = cpu_get_avg_load();
-	
-#if defined(HOTPLUG_BOOSTED)
-	boosted = (gpu_get_load() >= ctrl_hotplug.gpu_load_threshold);
-#endif
 
-	if (((num_online * ctrl_hotplug.down_tasks) > nr)
-#if defined(HOTPLUG_BOOSTED)
-			&& !boosted
-#endif
-			) {
-		if (cpu_load <= CPU_DOWN_LOAD) {
-			atomic_inc(&freq_history[DOWN]);
-			atomic_set(&freq_history[UP], 0);
-		} else {
-			atomic_set(&freq_history[UP], 0);
-			atomic_set(&freq_history[DOWN], 0);
-		}
-	} else if (((cpu_load >= CPU_UP_LOAD) && ((num_online * ctrl_hotplug.up_tasks) < nr)) 
-#if defined(HOTPLUG_BOOSTED)
-			|| boosted
-#endif
-			) {
+	if (cpu_load <= ctrl_hotplug.cpu_down_load) {
+		atomic_inc(&freq_history[DOWN]);
+		atomic_set(&freq_history[UP], 0);
+	} else if (cpu_load >= ctrl_hotplug.cpu_up_load) {
 		atomic_inc(&freq_history[UP]);
 		atomic_set(&freq_history[DOWN], 0);
-	} /* else if nothing matched up then we just leave the UP/DOWN history alone */
+	} else {
+		atomic_set(&freq_history[UP], 0);
+		atomic_set(&freq_history[DOWN], 0);
+	}
 
 	if (atomic_read(&freq_history[UP]) > up_threshold)
 		return UP;
@@ -322,19 +278,9 @@ static void exynos_work(struct work_struct *dwork)
 
 	target_state = hotplug_adjust_state(move);
 		
-	if(power_suspend_active && (ctrl_hotplug.sampling_rate == AWAKE_SAMPLING_RATE)) {
-		hotplug_enter_hstate(false, SUSPENDED_MIN_STATE);
-		
-		ctrl_hotplug.sampling_rate = ASLEEP_SAMPLING_RATE;
-		
-	} else if(!power_suspend_active && (ctrl_hotplug.sampling_rate == ASLEEP_SAMPLING_RATE)) {
-		hotplug_enter_hstate(true, WAKE_UP_STATE);		// just woke up, so give a boost
-		
-		ctrl_hotplug.sampling_rate = AWAKE_SAMPLING_RATE;
-	} else if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
-		|| (move != STAY)) {
+	if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
+			|| (move != STAY))
 		hotplug_enter_hstate(false, target_state);
-	}
 
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
@@ -369,11 +315,11 @@ define_store_state_function(down_threshold)
 define_show_state_function(sampling_rate)
 define_store_state_function(sampling_rate)
 
-define_show_state_function(up_tasks)
-define_store_state_function(up_tasks)
+define_show_state_function(cpu_up_load)
+define_store_state_function(cpu_up_load)
 
-define_show_state_function(down_tasks)
-define_store_state_function(down_tasks)
+define_show_state_function(cpu_down_load)
+define_store_state_function(cpu_down_load)
 
 define_show_state_function(min_lock)
 
@@ -544,21 +490,43 @@ static ssize_t show_time_in_state(struct device *dev,
 	return len;
 }
 
-void exynos_dm_hotplug_disable(void)
+#if defined(CONFIG_POWERSUSPEND)
+static void __cpuinit powersave_resume(struct power_suspend *handler)
 {
+	mutex_lock(&hotplug_lock);
+	hotplug_enter_hstate(true, WAKE_UP_STATE);
 
+	if (ctrl_hotplug.force_hstate == -1)
+		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+
+	mutex_unlock(&hotplug_lock);
 }
 
-void exynos_dm_hotplug_enable(void)
+static void __cpuinit powersave_suspend(struct power_suspend *handler)
 {
+	mutex_lock(&hotplug_lock);
+	hotplug_enter_hstate(false, SUSPENDED_STATE);
 
+	atomic_set(&freq_history[UP], 0);
+	atomic_set(&freq_history[DOWN], 0);
+
+	mutex_unlock(&hotplug_lock);
+
+	cancel_delayed_work_sync(&exynos_hotplug);
 }
+
+static struct power_suspend __refdata powersave_powersuspend = {
+	.suspend = powersave_suspend,
+	.resume = powersave_resume,
+};
+#endif /* (defined(CONFIG_POWERSUSPEND)... */
 
 static DEVICE_ATTR(up_threshold, S_IRUGO | S_IWUSR, show_up_threshold, store_up_threshold);
 static DEVICE_ATTR(down_threshold, S_IRUGO | S_IWUSR, show_down_threshold, store_down_threshold);
 static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
-static DEVICE_ATTR(up_tasks, S_IRUGO | S_IWUSR, show_up_tasks, store_up_tasks);
-static DEVICE_ATTR(down_tasks, S_IRUGO | S_IWUSR, show_down_tasks, store_down_tasks);
+static DEVICE_ATTR(cpu_up_load, S_IRUGO | S_IWUSR, show_cpu_up_load, store_cpu_up_load);
+static DEVICE_ATTR(cpu_down_load, S_IRUGO | S_IWUSR, show_cpu_down_load, store_cpu_down_load);
 static DEVICE_ATTR(force_hstate, S_IRUGO | S_IWUSR, show_force_hstate, store_force_hstate);
 static DEVICE_ATTR(cur_hstate, S_IRUGO, show_cur_hstate, NULL);
 static DEVICE_ATTR(min_lock, S_IRUGO | S_IWUSR, show_min_lock, store_min_lock);
@@ -570,8 +538,8 @@ static struct attribute *clusterhotplug_default_attrs[] = {
 	&dev_attr_up_threshold.attr,
 	&dev_attr_down_threshold.attr,
 	&dev_attr_sampling_rate.attr,
-	&dev_attr_up_tasks.attr,
-	&dev_attr_down_tasks.attr,
+	&dev_attr_cpu_up_load.attr,
+	&dev_attr_cpu_down_load.attr,
 	&dev_attr_force_hstate.attr,
 	&dev_attr_cur_hstate.attr,
 	&dev_attr_time_in_state.attr,
@@ -603,6 +571,10 @@ static int __init dm_cluster_hotplug_init(void)
 		pr_err("Failed to create sysfs for hotplug\n");
 		goto err_sys;
 	}
+	
+#if defined(CONFIG_POWERSUSPEND)
+	register_power_suspend(&powersave_powersuspend);
+#endif
 
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
 

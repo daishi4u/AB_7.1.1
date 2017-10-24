@@ -20,6 +20,8 @@
 #include <linux/kernel.h>
 #include <linux/percpu.h>
 #include <linux/types.h>
+#include <linux/tick.h>
+#include <linux/sched.h>
 
 #include <trace/events/power.h>
 
@@ -31,8 +33,8 @@ struct cpu_load
 {
 	unsigned int frequency;
 	unsigned int load;
-	u64 last_update;
-	u64 idle_time;
+	u64 prev_idle_timestamp;
+	u64 prev_idle_time;
 };
 static DEFINE_PER_CPU(struct cpu_load, cpuload);
 
@@ -54,7 +56,7 @@ void update_cpu_metric_f(int cpu, u64 now, u64 delta_idle, u64 delta_time,
 
 	pcpuload->load = load;
 	pcpuload->frequency = freq;
-	pcpuload->last_update = now;
+	pcpuload->prev_idle_timestamp = now;
 #ifdef CONFIG_CPU_THERMAL_IPA_DEBUG
 	trace_printk("cpu_load: cpu: %d freq: %u load: %u\n", cpu, freq, load);
 #endif
@@ -66,22 +68,20 @@ void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time,
 	update_cpu_metric_f(cpu, now, delta_idle, delta_time, policy->cur);
 }
 
-u64 update_cpu_load_metric(int cpu, bool io_is_busy)
+u64 update_cpu_load_metric(int cpu)
 {
 	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
-	u64 now;
-	u64 now_idle;
-	unsigned int delta_idle;
-	unsigned int delta_time;
+	u64 now, now_idle;
+	unsigned int delta_idle, delta_time;
 
-	now_idle = get_cpu_idle_time(cpu, &now, io_is_busy);
-	delta_idle = (unsigned int)(now_idle - pcpuload->idle_time);
-	delta_time = (unsigned int)(now - pcpuload->last_update);
+	now_idle = get_cpu_idle_time_us(cpu, &now);
+	delta_idle = (unsigned int)(now_idle - pcpuload->prev_idle_time);
+	delta_time = (unsigned int)(now - pcpuload->prev_idle_timestamp);
 	
 	update_cpu_metric_f(cpu, now, delta_idle, delta_time, cpufreq_quick_get(cpu));
 
-	pcpuload->idle_time = now_idle;
-	pcpuload->last_update = now;
+	pcpuload->prev_idle_time = now_idle;
+	pcpuload->prev_idle_timestamp = now;
 	return now;
 }
 
@@ -111,7 +111,7 @@ unsigned int cpu_get_load(int cpu)
 unsigned int cpu_get_avg_load(void)
 {
 	unsigned int avg_load = 0;
-	int cpu, online_cpus = 0;
+	int cpu, nr, online_cpus = 0;
 	
 	for_each_online_cpu(cpu) {
 		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
@@ -119,6 +119,13 @@ unsigned int cpu_get_avg_load(void)
 		avg_load += pcpuload->load;
 		online_cpus++;
 	}
+
+	nr = nr_running();
+	
+	avg_load = ((100 * nr) + avg_load) / (2 * online_cpus);
+	
+	if (avg_load > 100)
+		avg_load = 100;
 	
 	return avg_load / online_cpus;
 }
