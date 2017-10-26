@@ -29,6 +29,9 @@
 
 #include "cpu_load_metric.h"
 
+#define MIN_FREQ 300000
+#define MAX_FREQ 1700000
+
 struct cpu_load
 {
 	unsigned int frequency;
@@ -109,19 +112,21 @@ unsigned int cpu_get_load(int cpu)
 
 unsigned int cpu_get_avg_load(void)
 {
-	unsigned int avg_load = 0;
+	unsigned int avg_load = 0, avg_freq = 0;
 	int cpu, nr, online_cpus = 0;
 	
 	for_each_online_cpu(cpu) {
 		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
 
 		avg_load += pcpuload->load;
+		avg_freq += pcpuload->frequency - MIN_FREQ;
 		online_cpus++;
 	}
 
 	nr = nr_running();
 	
-	avg_load = ((100 * nr) + avg_load) / (2 * online_cpus);
+	avg_freq = (100 * avg_freq) / (MAX_FREQ - MIN_FREQ);
+	avg_load = ((100 * nr) + avg_load + avg_freq) / (3 * online_cpus);
 	
 	// we'll use a load over 100 to automatically hotplug in another cpu
 	//if (avg_load > 100)
@@ -134,9 +139,6 @@ int get_least_busy_cpu(void)
 {
 	int least_busy_cpu = 1, cpu, min_cpu = 1;
 	unsigned int least_busy_cpu_load = 100, curr_load;
-	
-	if(power_suspend_active)
-		min_cpu = 0;
 	
 	for_each_online_cpu(cpu)
 	{
