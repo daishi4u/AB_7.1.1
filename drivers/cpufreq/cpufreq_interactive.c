@@ -369,8 +369,6 @@ static u64 update_load(int cpu)
 
 	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
 
-	update_cpu_metric(cpu, now, delta_idle, delta_time, pcpu->policy);
-
 	pcpu->time_in_idle = now_idle;
 	pcpu->time_in_idle_timestamp = now;
 	return now;
