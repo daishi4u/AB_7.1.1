@@ -106,7 +106,6 @@ struct cpufreq_interactive_tunables {
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
-
 	/* Target load. Lower values result in higher CPU speeds. */
 	spinlock_t target_loads_lock;
 	unsigned int *target_loads;
@@ -370,6 +369,8 @@ static u64 update_load(int cpu)
 
 	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
 
+	update_cpu_metric(cpu, now, delta_idle, delta_time, pcpu->policy);
+
 	pcpu->time_in_idle = now_idle;
 	pcpu->time_in_idle_timestamp = now;
 	return now;
@@ -601,6 +602,10 @@ static int cpufreq_interactive_speedchange_task(void *data)
 		if (cpumask_empty(&policy_mask)) {
 			spin_unlock_irqrestore(&speedchange_cpumask_lock,
 					       flags);
+
+			if (kthread_should_stop())
+				break;
+
 			schedule();
 
 			if (kthread_should_stop())
@@ -632,7 +637,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 					&per_cpu(cpuinfo, j);
 
 				if (pjcpu->target_freq > max_freq)
-					max_freq = pjcpu->target_freq; 
+					max_freq = pjcpu->target_freq;
 			}
 
 #if defined(CONFIG_POWERSUSPEND)

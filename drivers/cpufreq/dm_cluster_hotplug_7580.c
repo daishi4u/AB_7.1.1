@@ -138,6 +138,7 @@ static int get_core_count(enum hstate state)
 static void __ref hotplug_cpu(enum hstate state)
 {
 	int i, cnt_target, num_online, least_busy_cpu;
+	unsigned int least_busy_cpu_load;
 
 	cnt_target = get_core_count(state);
 
@@ -154,7 +155,7 @@ static void __ref hotplug_cpu(enum hstate state)
 			if (!cpu_online(i))
 				cpu_up(i);
 		} else {
-			least_busy_cpu = get_least_busy_cpu();
+			least_busy_cpu = get_least_busy_cpu(&least_busy_cpu_load);
 		
 			cpu_down(least_busy_cpu);
 		}
@@ -220,7 +221,7 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 
 static enum action select_up_down(void)
 {
-	unsigned int cpu_load;
+	unsigned int cpu_load, least_busy_cpu_load;
 	int cpu, up_threshold, down_threshold;
 	
 	for_each_online_cpu(cpu) {
@@ -238,8 +239,12 @@ static enum action select_up_down(void)
 	} else {
 
 		if (cpu_load <= ctrl_hotplug.cpu_down_load) {
-			atomic_inc(&freq_history[DOWN]);
-			atomic_set(&freq_history[UP], 0);
+			get_least_busy_cpu(&least_busy_cpu_load);
+			
+			if (least_busy_cpu_load <= ctrl_hotplug.cpu_down_load) {
+				atomic_inc(&freq_history[DOWN]);
+				atomic_set(&freq_history[UP], 0);
+			}
 		} else if (cpu_load >= ctrl_hotplug.cpu_up_load) {
 			atomic_inc(&freq_history[UP]);
 			atomic_set(&freq_history[DOWN], 0);

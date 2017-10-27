@@ -110,10 +110,23 @@ unsigned int cpu_get_load(int cpu)
 	return pcpuload->load;	
 }
 
+unsigned int cpu_get_loadfreq(int cpu)
+{
+	int load, freq;
+	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
+	
+	load = pcpuload->load;
+	freq = pcpuload->frequency;
+	freq = (100 * (freq - MIN_FREQ)) / (MAX_FREQ - MIN_FREQ);
+	load = (load + freq) / 2;
+	
+	return load;
+}
+
 unsigned int cpu_get_avg_load(void)
 {
 	unsigned int avg_load = 0, avg_freq = 0;
-	int cpu, nr, online_cpus = 0;
+	int cpu, online_cpus = 0;
 	
 	for_each_online_cpu(cpu) {
 		struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
@@ -122,11 +135,9 @@ unsigned int cpu_get_avg_load(void)
 		avg_freq += pcpuload->frequency - MIN_FREQ;
 		online_cpus++;
 	}
-
-	nr = nr_running();
 	
 	avg_freq = (100 * avg_freq) / (MAX_FREQ - MIN_FREQ);
-	avg_load = ((100 * nr) + avg_load + avg_freq) / (3 * online_cpus);
+	avg_load = (avg_load + avg_freq) / (2 * online_cpus);
 	
 	// we'll use a load over 100 to automatically hotplug in another cpu
 	//if (avg_load > 100)
@@ -135,7 +146,7 @@ unsigned int cpu_get_avg_load(void)
 	return avg_load;
 }
 
-int get_least_busy_cpu(void)
+int get_least_busy_cpu(unsigned int *load)
 {
 	int least_busy_cpu = 1, cpu, min_cpu = 1;
 	unsigned int least_busy_cpu_load = 100, curr_load;
@@ -152,6 +163,8 @@ int get_least_busy_cpu(void)
 			least_busy_cpu = cpu;
 		}
 	}
+	
+	*load = least_busy_cpu_load;
 	
 	return least_busy_cpu;
 }
