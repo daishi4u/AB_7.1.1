@@ -1,0 +1,313 @@
+#include <linux/module.h>
+#include <linux/cpu.h>
+#include <linux/cpufreq.h>
+//#include <linux/fb.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/moduleparam.h>
+
+#if defined(CONFIG_POWERSUSPEND)
+#include <linux/powersuspend.h>
+#endif
+
+#include "cpu_load_metric.h"
+
+static struct delayed_work exynos_hotplug;
+static struct workqueue_struct *khotplug_wq;
+struct kobject *absmartplug_kobject;
+
+struct exynos_hotplug_ctrl {
+	unsigned int sampling_rate;
+	int max_cpus;
+	int min_cpus;
+	unsigned int target_load;
+};
+
+#define SUSPENDED_CPUS	 		2
+#define SCREEN_ON_MIN_CPUS	 	2
+#define WAKE_UP_CPUS			NR_CPUS
+#define SAMPLING_RATE 			100		// 100ms (Stock)
+#define TARGET_LOAD				80
+
+static int enabled __read_mostly = 1; // enabled by default
+
+static struct exynos_hotplug_ctrl ctrl_hotplug = {
+	.sampling_rate = SAMPLING_RATE,		/* ms */
+	.min_cpus = SCREEN_ON_MIN_CPUS,
+	.max_cpus = NR_CPUS,
+	.target_load = TARGET_LOAD,
+};
+
+static DEFINE_MUTEX(hotplug_lock);
+
+static void __ref hotplug_cpu(int cores)
+{
+	int i, num_online, least_busy_cpu;
+	unsigned int least_busy_cpu_load;
+	
+	if (power_suspend_active && cores > 2)
+		return;
+
+	/* Check the Online CPU supposed to be online or offline */
+	for (i = 0 ; i < NR_CPUS ; i++) {
+		num_online = num_online_cpus();
+		
+		if(num_online == cores) 
+		{
+			break;
+		}
+		
+		if (cores > num_online) {
+			if (!cpu_online(i))
+				cpu_up(i);
+		} else {
+			least_busy_cpu = get_least_busy_cpu(&least_busy_cpu_load);
+		
+			cpu_down(least_busy_cpu);
+		}
+	}
+}
+
+static int get_target_cores(void)
+{
+	int target_cores, num_online, min_cpus, max_cpus;
+	unsigned int cpu_load;
+
+	num_online = num_online_cpus();
+	cpu_load = cpu_get_avg_load();
+	target_cores = (cpu_load * num_online) / ctrl_hotplug.target_load;
+	
+	min_cpus = ctrl_hotplug.min_cpus;
+	max_cpus = ctrl_hotplug.max_cpus;
+
+	if ((cpu_load * num_online) % ctrl_hotplug.target_load)
+		target_cores++;
+
+	if (target_cores > max_cpus)
+		target_cores = max_cpus;
+	else if (target_cores < min_cpus)
+		target_cores = min_cpus;
+
+	return target_cores;
+}
+
+static void update_load(void)
+{
+	int cpu;
+	
+	for_each_online_cpu(cpu) {
+		update_cpu_load_metric(cpu);
+	}
+}
+
+static void exynos_work(struct work_struct *dwork)
+{
+	int target_cpus_online;
+	update_load();
+
+	mutex_lock(&hotplug_lock);
+
+	target_cpus_online = get_target_cores();
+		
+	if (num_online_cpus() != target_cpus_online)
+		hotplug_cpu(target_cpus_online);
+
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+	mutex_unlock(&hotplug_lock);
+}
+
+#define define_one_global_ro(_name)					\
+static struct global_attr _name =					\
+__ATTR(_name, 0444, show_##_name, NULL)
+
+#define define_one_global_rw(_name)					\
+static struct global_attr _name =					\
+__ATTR(_name, 0644, show_##_name, store_##_name)
+
+#define define_show_state_function(_name) \
+static ssize_t show_##_name(struct kobject *kobj, struct attribute *attr, \
+			char *buf) \
+{ \
+	return sprintf(buf, "%d\n", ctrl_hotplug._name); \
+}
+
+#define define_store_state_function(_name) \
+static ssize_t store_##_name(struct kobject *kobj, struct attribute *attr, \
+		const char *buf, size_t count) \
+{ \
+	unsigned long value; \
+	int ret; \
+	ret = kstrtoul(buf, 10, &value); \
+	if (ret) \
+		return ret; \
+	ctrl_hotplug._name = value; \
+	return ret ? ret : count; \
+}								\
+define_one_global_rw(_name);
+
+define_show_state_function(sampling_rate)
+define_store_state_function(sampling_rate)
+
+define_show_state_function(min_cpus)
+
+define_show_state_function(max_cpus)
+
+define_show_state_function(target_load)
+define_store_state_function(target_load)
+
+static ssize_t store_max_cpus(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, target_state;
+
+	ret = sscanf(buf, "%d", &target_state);
+	if (ret != 1)
+		return -EINVAL;
+
+	mutex_lock(&hotplug_lock);
+
+	if ((target_state <= NR_CPUS) && (target_state >= SCREEN_ON_MIN_CPUS))
+		ctrl_hotplug.max_cpus = target_state;
+
+	mutex_unlock(&hotplug_lock);
+
+	return count;
+}
+define_one_global_rw(max_cpus);
+
+static ssize_t store_min_cpus(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, target_state;
+
+	ret = sscanf(buf, "%d", &target_state);
+	if (ret != 1)
+		return -EINVAL;
+
+	mutex_lock(&hotplug_lock);
+
+	if ((target_state <= NR_CPUS) && (target_state >= SCREEN_ON_MIN_CPUS))
+		ctrl_hotplug.min_cpus = target_state;
+
+	mutex_unlock(&hotplug_lock);
+
+	return count;
+}
+define_one_global_rw(min_cpus);
+
+#if defined(CONFIG_POWERSUSPEND)
+static void __cpuinit powersave_resume(struct power_suspend *handler)
+{
+	hotplug_cpu(WAKE_UP_CPUS);
+	
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+			msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+}
+
+static void __cpuinit powersave_suspend(struct power_suspend *handler)
+{
+	hotplug_cpu(SUSPENDED_CPUS);
+
+	cancel_delayed_work_sync(&exynos_hotplug);
+}
+
+static struct power_suspend __refdata powersave_powersuspend = {
+	.suspend = powersave_suspend,
+	.resume = powersave_resume,
+};
+#endif /* (defined(CONFIG_POWERSUSPEND)... */
+
+static int __cpuinit set_enabled(const char *val, const struct kernel_param *kp) {
+	int ret, last_val = enabled;
+	unsigned int cpu;
+
+	cpu = 0;
+
+	ret = param_set_bool(val, kp);
+	
+	if(enabled != last_val)
+	{
+		if (enabled) {
+			queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+			register_power_suspend(&powersave_powersuspend);
+		} else {
+			cancel_delayed_work_sync(&exynos_hotplug);
+			unregister_power_suspend(&powersave_powersuspend);
+			for_each_present_cpu(cpu) {
+				if (num_online_cpus() >= nr_cpu_ids)
+					break;
+				if (!cpu_online(cpu))
+					cpu_up(cpu);
+			}
+		}
+	}
+	return ret;
+}
+
+static struct kernel_param_ops module_ops = {
+	.set = set_enabled,
+	.get = param_get_bool,
+};
+
+module_param_cb(enabled, &module_ops, &enabled, 0644);
+MODULE_PARM_DESC(enabled, "Afterburner Smartplug. Hotplug cores based on target load.");
+
+static struct attribute *clusterhotplug_default_attrs[] = {
+	&sampling_rate.attr,
+	&min_cpus.attr,
+	&max_cpus.attr,
+	&target_load.attr,
+	NULL
+};
+
+static struct attribute_group clusterhotplug_attr_group = {
+	.attrs = clusterhotplug_default_attrs,
+	.name = "smartplugconf",
+};
+
+static int __init absmartplug_init(void)
+{
+	int ret;
+
+	INIT_DEFERRABLE_WORK(&exynos_hotplug, exynos_work);
+
+	khotplug_wq = alloc_workqueue("khotplug", WQ_FREEZABLE, 0);
+	if (!khotplug_wq) {
+		pr_err("Failed to create khotplug workqueue\n");
+		ret = -EFAULT;
+		goto err_wq;
+	}
+	
+	absmartplug_kobject = kobject_create_and_add("absmartplug", kernel_kobj);
+	
+	if (!absmartplug_kobject)
+		goto err_sys;
+
+	ret = sysfs_create_group(absmartplug_kobject, &clusterhotplug_attr_group);
+	if (ret) {
+		pr_err("Failed to create sysfs for hotplug\n");
+		goto err_sys;
+	}
+	
+	if (enabled) {
+#if defined(CONFIG_POWERSUSPEND)
+		register_power_suspend(&powersave_powersuspend);
+#endif
+
+		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
+	}
+
+	return 0;
+
+err_sys:
+	destroy_workqueue(khotplug_wq);
+err_wq:
+	return ret;
+}
+
+MODULE_LICENSE("GPL and additional rights");
+MODULE_AUTHOR("Brett Wagner <daishi4u@yahoo.com>");
+MODULE_DESCRIPTION("Afterburner Hotplug driver for Exynos 7580");
+late_initcall(absmartplug_init);

@@ -1,5 +1,11 @@
 menu "CPU Frequency scaling"
 
+config ABSMARTPLUG
+	bool "Enable Afterburner Smartplug"
+	default y
+	help
+	  This driver uses a load target to hotplug CPUs
+
 config THUNDERPLUG_CONTROL
 	bool "Enable plugging down/up of cores using powersuspend"
 	default n
