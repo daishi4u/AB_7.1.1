@@ -1,7 +1,6 @@
 #include <linux/module.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-//#include <linux/fb.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -15,12 +14,11 @@
 
 static struct delayed_work exynos_hotplug;
 static struct workqueue_struct *khotplug_wq;
-struct kobject *absmartplug_kobject;
 
 struct exynos_hotplug_ctrl {
 	unsigned int sampling_rate;
-	int max_cpus;
-	int min_cpus;
+	unsigned int max_cpus;
+	unsigned int min_cpus;
 	unsigned int target_load;
 };
 
@@ -117,51 +115,41 @@ static void exynos_work(struct work_struct *dwork)
 	mutex_unlock(&hotplug_lock);
 }
 
-#define define_one_global_ro(_name)					\
-static struct global_attr _name =					\
-__ATTR(_name, 0444, show_##_name, NULL)
-
-#define define_one_global_rw(_name)					\
-static struct global_attr _name =					\
-__ATTR(_name, 0644, show_##_name, store_##_name)
-
-#define define_show_state_function(_name) \
-static ssize_t show_##_name(struct kobject *kobj, struct attribute *attr, \
-			char *buf) \
-{ \
-	return sprintf(buf, "%d\n", ctrl_hotplug._name); \
+#define show_one(file_name, object)					\
+static ssize_t show_##file_name						\
+(struct kobject *kobj, struct attribute *attr, char *buf)		\
+{									\
+	return sprintf(buf, "%u\n", ctrl_hotplug.object);			\
 }
 
-#define define_store_state_function(_name) \
-static ssize_t store_##_name(struct kobject *kobj, struct attribute *attr, \
-		const char *buf, size_t count) \
-{ \
-	unsigned long value; \
-	int ret; \
-	ret = kstrtoul(buf, 10, &value); \
-	if (ret) \
-		return ret; \
-	ctrl_hotplug._name = value; \
-	return ret ? ret : count; \
-}								\
-define_one_global_rw(_name);
+show_one(sampling_rate, sampling_rate);
+show_one(min_cpus, min_cpus);
+show_one(max_cpus, max_cpus);
+show_one(target_load, target_load);
 
-define_show_state_function(sampling_rate)
-define_store_state_function(sampling_rate)
+#define store_one(file_name, object)					\
+static ssize_t store_##file_name					\
+(struct kobject *a, struct attribute *b, const char *buf, size_t count)	\
+{									\
+	unsigned int input;						\
+	int ret;							\
+	ret = sscanf(buf, "%u", &input);				\
+	if (ret != 1)							\
+		return -EINVAL;						\
+	ctrl_hotplug.object = input;					\
+	return count;							\
+}
 
-define_show_state_function(min_cpus)
+store_one(sampling_rate, sampling_rate);
+store_one(target_load, target_load);
 
-define_show_state_function(max_cpus)
-
-define_show_state_function(target_load)
-define_store_state_function(target_load)
-
-static ssize_t store_max_cpus(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t store_max_cpus(struct kobject *a,
+	struct attribute *attr, const char *buf, size_t count)
 {
-	int ret, target_state;
+	int ret;
+	unsigned int target_state;
 
-	ret = sscanf(buf, "%d", &target_state);
+	ret = sscanf(buf, "%u", &target_state);
 	if (ret != 1)
 		return -EINVAL;
 
@@ -174,14 +162,14 @@ static ssize_t store_max_cpus(struct device *dev,
 
 	return count;
 }
-define_one_global_rw(max_cpus);
 
-static ssize_t store_min_cpus(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t store_min_cpus(struct kobject *a,
+	struct attribute *attr, const char *buf, size_t count)
 {
-	int ret, target_state;
+	int ret;
+	unsigned int target_state;
 
-	ret = sscanf(buf, "%d", &target_state);
+	ret = sscanf(buf, "%u", &target_state);
 	if (ret != 1)
 		return -EINVAL;
 
@@ -194,7 +182,11 @@ static ssize_t store_min_cpus(struct device *dev,
 
 	return count;
 }
+
+define_one_global_rw(sampling_rate);
+define_one_global_rw(max_cpus);
 define_one_global_rw(min_cpus);
+define_one_global_rw(target_load);
 
 #if defined(CONFIG_POWERSUSPEND)
 static void __cpuinit powersave_resume(struct power_suspend *handler)
@@ -264,7 +256,7 @@ static struct attribute *clusterhotplug_default_attrs[] = {
 
 static struct attribute_group clusterhotplug_attr_group = {
 	.attrs = clusterhotplug_default_attrs,
-	.name = "smartplugconf",
+	.name = "absmartplugconf",
 };
 
 static int __init absmartplug_init(void)
@@ -273,19 +265,14 @@ static int __init absmartplug_init(void)
 
 	INIT_DEFERRABLE_WORK(&exynos_hotplug, exynos_work);
 
-	khotplug_wq = alloc_workqueue("khotplug", WQ_FREEZABLE, 0);
+	khotplug_wq = alloc_workqueue("absmartplug_wq", WQ_FREEZABLE, 0);
 	if (!khotplug_wq) {
 		pr_err("Failed to create khotplug workqueue\n");
 		ret = -EFAULT;
 		goto err_wq;
 	}
-	
-	absmartplug_kobject = kobject_create_and_add("absmartplug", kernel_kobj);
-	
-	if (!absmartplug_kobject)
-		goto err_sys;
 
-	ret = sysfs_create_group(absmartplug_kobject, &clusterhotplug_attr_group);
+	ret = sysfs_create_group(kernel_kobj, &clusterhotplug_attr_group);
 	if (ret) {
 		pr_err("Failed to create sysfs for hotplug\n");
 		goto err_sys;

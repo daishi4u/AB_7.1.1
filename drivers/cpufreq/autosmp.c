@@ -218,11 +218,11 @@ MODULE_PARM_DESC(enabled, "hotplug/unplug cpu cores based on cpu load");
 /***************************** SYSFS START *****************************/
 #define define_one_global_ro(_name)					\
 static struct global_attr _name =					\
-__ATTR(_name, 0444, show_##_name, NULL)
+__ATTR(_name, 0444, show_##_name, NULL);
 
 #define define_one_global_rw(_name)					\
 static struct global_attr _name =					\
-__ATTR(_name, 0644, show_##_name, store_##_name)
+__ATTR(_name, 0644, show_##_name, store_##_name);
 
 struct kobject *asmp_kobject;
 
