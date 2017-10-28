@@ -1,3 +1,4 @@
+#include <linux/module.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
@@ -14,6 +15,7 @@
 
 static struct delayed_work exynos_hotplug;
 static struct workqueue_struct *khotplug_wq;
+struct kobject *absmartplug_kobject;
 
 struct exynos_hotplug_ctrl {
 	unsigned int sampling_rate;
@@ -28,7 +30,7 @@ struct exynos_hotplug_ctrl {
 #define SAMPLING_RATE 			100		// 100ms (Stock)
 #define TARGET_LOAD				80
 
-static int enabled = 1;
+static int enabled __read_mostly = 1; // enabled by default
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = SAMPLING_RATE,		/* ms */
@@ -239,7 +241,7 @@ static struct kernel_param_ops module_ops = {
 };
 
 module_param_cb(enabled, &module_ops, &enabled, 0644);
-MODULE_PARM_DESC(enabled, "hotplug/unplug cpu cores based on cpu load");
+MODULE_PARM_DESC(enabled, "Afterburner Smartplug. Hotplug cores based on target load.");
 
 static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
 static DEVICE_ATTR(min_cpus, S_IRUGO | S_IWUSR, show_min_cpus, store_min_cpus);
@@ -271,18 +273,25 @@ static int __init dm_cluster_hotplug_init(void)
 		ret = -EFAULT;
 		goto err_wq;
 	}
+	
+	absmartplug_kobject = kobject_create_and_add("Afterburner_Smartplug", kernel_kobj);
+	
+	if (!absmartplug_kobject)
+		goto err_sys;
 
-	ret = sysfs_create_group(&cpu_subsys.dev_root->kobj, &clusterhotplug_attr_group);
+	ret = sysfs_create_group(absmartplug_kobject, &clusterhotplug_attr_group);
 	if (ret) {
 		pr_err("Failed to create sysfs for hotplug\n");
 		goto err_sys;
 	}
 	
+	if (enabled) {
 #if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&powersave_powersuspend);
+		register_power_suspend(&powersave_powersuspend);
 #endif
 
-	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
+		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
+	}
 
 	return 0;
 
@@ -291,4 +300,8 @@ err_sys:
 err_wq:
 	return ret;
 }
+
+MODULE_LICENSE("GPL and additional rights");
+MODULE_AUTHOR("Brett Wagner <daishi4u@yahoo.com>");
+MODULE_DESCRIPTION("Hotplug driver for Exynos 7580");
 late_initcall(dm_cluster_hotplug_init);
