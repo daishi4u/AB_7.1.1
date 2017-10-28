@@ -49,6 +49,7 @@ struct exynos_hotplug_ctrl {
 	int force_hstate;
 	int cur_hstate;
 	enum hstate old_state;
+	unsigned int target_load;
 	struct hotplug_hstates_usage usage[MAX_HSTATE];
 };
 
@@ -97,11 +98,12 @@ static struct hotplug_hstate hstate_set[] = {
 };
 
 #define SUSPENDED_STATE	 		H6
-#define SCREEN_ON_MAX_STATE 	H4
+#define SCREEN_ON_MAX_STATE 	H6
 #define WAKE_UP_STATE			H0
 #define SAMPLING_RATE 			100		// 100ms (Stock)
 #define CPU_DOWN_LOAD			25		// If load is less than 25 percent then it will turn off cores
 #define CPU_UP_LOAD				60
+#define TARGET_LOAD				80
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = SAMPLING_RATE,		/* ms */
@@ -114,6 +116,7 @@ static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.max_lock = -1,
 	.cur_hstate = H0,
 	.old_state = H0,
+	.target_load = TARGET_LOAD,
 };
 
 static DEFINE_MUTEX(hotplug_lock);
@@ -219,6 +222,26 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 	ctrl_hotplug.cur_hstate = state;
 }
 
+static enum hstate hotplug_adjust_state(void)
+{
+	int target_cores, num_online;
+	unsigned int cpu_load;
+
+	num_online = num_online_cpus();
+	cpu_load = cpu_get_avg_load();
+	target_cores = (cpu_load * num_online) / ctrl_hotplug.target_load;
+
+	if ((cpu_load * num_online) % ctrl_hotplug.target_load)
+		target_cores++;
+
+	if (target_cores > NR_CPUS)
+		target_cores = NR_CPUS;
+	else if (target_cores < 2) // fix later
+		target_cores = 2;
+
+	return NR_CPUS - target_cores;
+}
+
 static enum action select_up_down(void)
 {
 	unsigned int cpu_load, least_busy_cpu_load;
@@ -262,24 +285,6 @@ static enum action select_up_down(void)
 	return STAY;
 }
 
-static enum hstate hotplug_adjust_state(enum action move)
-{
-	int state;
-	state = ctrl_hotplug.old_state;
-
-	if (move == DOWN) {
-		state++;
-		if (state >= MAX_HSTATE)
-			state = MAX_HSTATE - 1;
-	} else if (move != STAY){
-		state -= 4;		// turn on 4 cores when moving up
-		if(state < 0)
-			state = 0;
-	} 
-
-	return state;
-}
-
 static void exynos_work(struct work_struct *dwork)
 {
 	enum action move = select_up_down();
@@ -287,7 +292,7 @@ static void exynos_work(struct work_struct *dwork)
 
 	mutex_lock(&hotplug_lock);
 
-	target_state = hotplug_adjust_state(move);
+	target_state = hotplug_adjust_state();
 		
 	if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
 			|| (move != STAY))
