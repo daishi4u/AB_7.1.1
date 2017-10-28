@@ -1,10 +1,10 @@
-#include <linux/atomic.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/moduleparam.h>
 
 #if defined(CONFIG_POWERSUSPEND)
 #include <linux/powersuspend.h>
@@ -15,146 +15,48 @@
 static struct delayed_work exynos_hotplug;
 static struct workqueue_struct *khotplug_wq;
 
-enum hstate {
-	H0,
-	H1,
-	H2,
-	H3,
-	H4,
-	H5,
-	H6,
-	MAX_HSTATE,
-};
-
-enum action {
-	DOWN,
-	UP,
-	STAY,
-};
-
-struct hotplug_hstates_usage {
-	unsigned long time;
-};
-
 struct exynos_hotplug_ctrl {
-	ktime_t last_time;
-	ktime_t last_check_time;
 	unsigned int sampling_rate;
-	unsigned int up_threshold;
-	unsigned int down_threshold;
-	unsigned int cpu_up_load;
-	unsigned int cpu_down_load;
-	int max_lock;
-	int min_lock;
-	int force_hstate;
-	int cur_hstate;
-	enum hstate old_state;
+	int max_cpus;
+	int min_cpus;
 	unsigned int target_load;
-	struct hotplug_hstates_usage usage[MAX_HSTATE];
 };
 
-struct hotplug_hstate {
-	char *name;
-	unsigned int core_count;
-	enum hstate state;
-};
-
-static struct hotplug_hstate hstate_set[] = {
-	[H0] = {
-		.name		= "H0",
-		.core_count	= NR_CPUS,
-		.state		= H0,
-	},
-	[H1] = {
-		.name		= "H1",
-		.core_count	= 7,
-		.state		= H1,
-	},
-	[H2] = {
-		.name		= "H2",
-		.core_count	= 6,
-		.state		= H2,
-	},
-	[H3] = {
-		.name		= "H3",
-		.core_count	= 5,
-		.state		= H3,
-	},
-	[H4] = {
-		.name		= "H4",
-		.core_count	= 4,
-		.state		= H4,
-	},
-	[H5] = {
-		.name		= "H5",
-		.core_count	= 3,
-		.state		= H5,
-	},
-	[H6] = {
-		.name		= "H6",
-		.core_count	= 2,
-		.state		= H6,
-	},
-};
-
-#define SUSPENDED_STATE	 		H6
-#define SCREEN_ON_MAX_STATE 	H6
-#define WAKE_UP_STATE			H0
+#define SUSPENDED_CPUS	 		2
+#define SCREEN_ON_MIN_CPUS	 	2
+#define WAKE_UP_CPUS			NR_CPUS
 #define SAMPLING_RATE 			100		// 100ms (Stock)
-#define CPU_DOWN_LOAD			25		// If load is less than 25 percent then it will turn off cores
-#define CPU_UP_LOAD				60
 #define TARGET_LOAD				80
+
+static int enabled = 1;
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = SAMPLING_RATE,		/* ms */
-	.up_threshold = 3,
-	.down_threshold = 3,
-	.cpu_up_load = CPU_UP_LOAD,
-	.cpu_down_load = CPU_DOWN_LOAD,
-	.force_hstate = -1,
-	.min_lock = -1,
-	.max_lock = -1,
-	.cur_hstate = H0,
-	.old_state = H0,
+	.min_cpus = SCREEN_ON_MIN_CPUS,
+	.max_cpus = NR_CPUS,
 	.target_load = TARGET_LOAD,
 };
 
 static DEFINE_MUTEX(hotplug_lock);
-static DEFINE_SPINLOCK(hstate_status_lock);
 
-static atomic_t freq_history[STAY] =  {ATOMIC_INIT(0), ATOMIC_INIT(0)};
-
-/*
- * If 'state' is less than "MAX_STATE"
- *	return core_count of 'state'
- * else
- *	return core count of 'H0'
- */
-static int get_core_count(enum hstate state)
+static void __ref hotplug_cpu(int cores)
 {
-	if (state < MAX_HSTATE)
-		return hstate_set[state].core_count;
-	else
-		return hstate_set[H0].core_count;
-}
-
-static void __ref hotplug_cpu(enum hstate state)
-{
-	int i, cnt_target, num_online, least_busy_cpu;
+	int i, num_online, least_busy_cpu;
 	unsigned int least_busy_cpu_load;
-
-	cnt_target = get_core_count(state);
+	
+	if (power_suspend_active && cores > 2)
+		return;
 
 	/* Check the Online CPU supposed to be online or offline */
 	for (i = 0 ; i < NR_CPUS ; i++) {
 		num_online = num_online_cpus();
 		
-		if(num_online == cnt_target) 
+		if(num_online == cores) 
 		{
 			break;
 		}
 		
-		if (cnt_target > num_online) {
+		if (cores > num_online) {
 			if (!cpu_online(i))
 				cpu_up(i);
 		} else {
@@ -165,138 +67,49 @@ static void __ref hotplug_cpu(enum hstate state)
 	}
 }
 
-static s64 hotplug_update_time_status(void)
+static int get_target_cores(void)
 {
-	ktime_t curr_time, last_time;
-	s64 diff;
-
-	curr_time = ktime_get();
-	last_time = ctrl_hotplug.last_time;
-
-	diff = ktime_to_ms(ktime_sub(curr_time, last_time));
-
-	if (diff > INT_MAX)
-		diff = INT_MAX;
-
-	ctrl_hotplug.usage[ctrl_hotplug.old_state].time += diff;
-	ctrl_hotplug.last_time = curr_time;
-
-	return diff;
-}
-
-static void hotplug_enter_hstate(bool force, enum hstate state)
-{
-	int min_state, max_state;
-
-	if (power_suspend_active && state < SUSPENDED_STATE)
-		return;
-
-	if (!force) {
-		min_state = ctrl_hotplug.min_lock;
-		max_state = ctrl_hotplug.max_lock;
-
-		if (min_state >= 0 && state > min_state)
-			state = min_state;
-
-		if (max_state > 0 && state < max_state)
-			state = max_state;
-	}
-
-	if (ctrl_hotplug.old_state == state)
-		return;
-
-	spin_lock(&hstate_status_lock);
-	hotplug_update_time_status();
-	spin_unlock(&hstate_status_lock);
-
-	hotplug_cpu(state);
-
-	atomic_set(&freq_history[UP], 0);
-	atomic_set(&freq_history[DOWN], 0);
-
-	spin_lock(&hstate_status_lock);
-	hotplug_update_time_status();
-	spin_unlock(&hstate_status_lock);
-
-	ctrl_hotplug.old_state = state;
-	ctrl_hotplug.cur_hstate = state;
-}
-
-static enum hstate hotplug_adjust_state(void)
-{
-	int target_cores, num_online;
+	int target_cores, num_online, min_cpus, max_cpus;
 	unsigned int cpu_load;
 
 	num_online = num_online_cpus();
 	cpu_load = cpu_get_avg_load();
 	target_cores = (cpu_load * num_online) / ctrl_hotplug.target_load;
+	
+	min_cpus = ctrl_hotplug.min_cpus;
+	max_cpus = ctrl_hotplug.max_cpus;
 
 	if ((cpu_load * num_online) % ctrl_hotplug.target_load)
 		target_cores++;
 
-	if (target_cores > NR_CPUS)
-		target_cores = NR_CPUS;
-	else if (target_cores < 2) // fix later
-		target_cores = 2;
+	if (target_cores > max_cpus)
+		target_cores = max_cpus;
+	else if (target_cores < min_cpus)
+		target_cores = min_cpus;
 
-	return NR_CPUS - target_cores;
+	return target_cores;
 }
 
-static enum action select_up_down(void)
+static void update_load(void)
 {
-	unsigned int cpu_load, least_busy_cpu_load;
-	int cpu, up_threshold, down_threshold;
+	int cpu;
 	
 	for_each_online_cpu(cpu) {
 		update_cpu_load_metric(cpu);
 	}
-	
-	up_threshold = ctrl_hotplug.up_threshold;
-	down_threshold = ctrl_hotplug.down_threshold;
-	
-	cpu_load = cpu_get_avg_load();
-	
-	if(cpu_load > 100) {
-		atomic_set(&freq_history[DOWN], 0);
-		atomic_set(&freq_history[UP], up_threshold + 1);
-	} else {
-
-		if (cpu_load <= ctrl_hotplug.cpu_down_load) {
-			get_least_busy_cpu(&least_busy_cpu_load);
-			
-			if (least_busy_cpu_load <= ctrl_hotplug.cpu_down_load) {
-				atomic_inc(&freq_history[DOWN]);
-				atomic_set(&freq_history[UP], 0);
-			}
-		} else if (cpu_load >= ctrl_hotplug.cpu_up_load) {
-			atomic_inc(&freq_history[UP]);
-			atomic_set(&freq_history[DOWN], 0);
-		} else {
-			atomic_set(&freq_history[UP], 0);
-			atomic_set(&freq_history[DOWN], 0);
-		}
-	}
-
-	if (atomic_read(&freq_history[UP]) > up_threshold)
-		return UP;
-	else if (atomic_read(&freq_history[DOWN]) > down_threshold)
-		return DOWN;
-
-	return STAY;
 }
 
 static void exynos_work(struct work_struct *dwork)
 {
-	enum action move = select_up_down();
-	enum hstate target_state;
+	int target_cpus_online;
+	update_load();
 
 	mutex_lock(&hotplug_lock);
 
-	target_state = hotplug_adjust_state();
+	target_cpus_online = get_target_cores();
 		
-	if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
-			|| (move != STAY))
-		hotplug_enter_hstate(false, target_state);
+	if (num_online_cpus() != target_cpus_online)
+		hotplug_cpu(target_cpus_online);
 
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
@@ -322,212 +135,66 @@ static ssize_t store_##_name(struct device *dev, struct device_attribute *attr, 
 	return ret ? ret : count; \
 }
 
-define_show_state_function(up_threshold)
-define_store_state_function(up_threshold)
-
-define_show_state_function(down_threshold)
-define_store_state_function(down_threshold)
-
 define_show_state_function(sampling_rate)
 define_store_state_function(sampling_rate)
 
-define_show_state_function(cpu_up_load)
-define_store_state_function(cpu_up_load)
+define_show_state_function(min_cpus)
 
-define_show_state_function(cpu_down_load)
-define_store_state_function(cpu_down_load)
+define_show_state_function(max_cpus)
 
-define_show_state_function(min_lock)
+define_show_state_function(target_load)
+define_store_state_function(target_load)
 
-define_show_state_function(max_lock)
-
-define_show_state_function(cur_hstate)
-
-define_show_state_function(force_hstate)
-
-void __set_force_hstate(int target_state)
-{
-	if (target_state < 0) {
-		mutex_lock(&hotplug_lock);
-		ctrl_hotplug.force_hstate = -1;
-		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-	} else {
-		cancel_delayed_work_sync(&exynos_hotplug);
-
-		mutex_lock(&hotplug_lock);
-		hotplug_enter_hstate(true, target_state);
-		ctrl_hotplug.force_hstate = target_state;
-	}
-
-	mutex_unlock(&hotplug_lock);
-}
-
-static ssize_t store_force_hstate(struct device *dev,
+static ssize_t store_max_cpus(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret, target_state;
 
 	ret = sscanf(buf, "%d", &target_state);
-	if (ret != 1 || target_state >= MAX_HSTATE)
+	if (ret != 1)
 		return -EINVAL;
-
-	__set_force_hstate(target_state);
-
-	return count;
-}
-
-static void __force_hstate(int target_state, int *value)
-{
-	if (target_state < 0) {
-		mutex_lock(&hotplug_lock);
-		*value = -1;
-	} else {
-		cancel_delayed_work_sync(&exynos_hotplug);
-
-		mutex_lock(&hotplug_lock);
-		hotplug_enter_hstate(true, target_state);
-		*value = target_state;
-	}
-
-	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-			msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-	mutex_unlock(&hotplug_lock);
-}
-
-static ssize_t store_max_lock(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int max_state;
-	int state;
-
-	int ret, target_state;
-
-	ret = sscanf(buf, "%d", &target_state);
-	if (ret != 1 || target_state >= MAX_HSTATE)
-		return -EINVAL;
-
-	max_state = target_state;
-	state = target_state;
 
 	mutex_lock(&hotplug_lock);
 
-	if (ctrl_hotplug.force_hstate != -1) {
-		mutex_unlock(&hotplug_lock);
-		return count;
-	}
-
-	if (state < 0) {
-		mutex_unlock(&hotplug_lock);
-		goto out;
-	}
-
-	if (ctrl_hotplug.min_lock >= 0)
-		state = ctrl_hotplug.min_lock;
-
-	if (max_state >= 0 && state <= max_state)
-		state = max_state;
-
-	if ((int)ctrl_hotplug.old_state > state) {
-		ctrl_hotplug.max_lock = state;
-		mutex_unlock(&hotplug_lock);
-		return count;
-	}
+	if ((target_state <= NR_CPUS) && (target_state >= SCREEN_ON_MIN_CPUS))
+		ctrl_hotplug.max_cpus = target_state;
 
 	mutex_unlock(&hotplug_lock);
-
-out:
-	__force_hstate(state, &ctrl_hotplug.max_lock);
 
 	return count;
 }
 
-static ssize_t store_min_lock(struct device *dev,
+static ssize_t store_min_cpus(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
-	int max_state = -1;
-	int state;
-
 	int ret, target_state;
 
 	ret = sscanf(buf, "%d", &target_state);
-	if (ret != 1 || target_state >= MAX_HSTATE)
+	if (ret != 1)
 		return -EINVAL;
-
-	state = target_state;
 
 	mutex_lock(&hotplug_lock);
 
-	if (ctrl_hotplug.force_hstate != -1) {
-		mutex_unlock(&hotplug_lock);
-		return count;
-	}
-
-	if (state < 0) {
-		mutex_unlock(&hotplug_lock);
-		goto out;
-	}
-
-	if (ctrl_hotplug.max_lock >= 0)
-		max_state = ctrl_hotplug.max_lock;
-
-	if (max_state >= 0 && state <= max_state)
-		state = max_state;
-
-	if ((int)ctrl_hotplug.old_state < state) {
-		ctrl_hotplug.min_lock = state;
-		mutex_unlock(&hotplug_lock);
-		return count;
-	}
+	if ((target_state <= NR_CPUS) && (target_state >= SCREEN_ON_MIN_CPUS))
+		ctrl_hotplug.min_cpus = target_state;
 
 	mutex_unlock(&hotplug_lock);
 
-out:
-	__force_hstate(state, &ctrl_hotplug.min_lock);
-
 	return count;
-}
-
-static ssize_t show_time_in_state(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	ssize_t len = 0;
-	int i;
-
-	spin_lock(&hstate_status_lock);
-	hotplug_update_time_status();
-	spin_unlock(&hstate_status_lock);
-
-	for (i = 0; i < MAX_HSTATE; i++) {
-		len += sprintf(buf + len, "%s %llu\n", hstate_set[i].name,
-				(unsigned long long)ctrl_hotplug.usage[i].time);
-	}
-	return len;
 }
 
 #if defined(CONFIG_POWERSUSPEND)
 static void __cpuinit powersave_resume(struct power_suspend *handler)
 {
-	mutex_lock(&hotplug_lock);
-	hotplug_enter_hstate(true, WAKE_UP_STATE);
-
-	if (ctrl_hotplug.force_hstate == -1)
-		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-	mutex_unlock(&hotplug_lock);
+	hotplug_cpu(WAKE_UP_CPUS);
+	
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+			msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 }
 
 static void __cpuinit powersave_suspend(struct power_suspend *handler)
 {
-	mutex_lock(&hotplug_lock);
-	hotplug_enter_hstate(false, SUSPENDED_STATE);
-
-	atomic_set(&freq_history[UP], 0);
-	atomic_set(&freq_history[DOWN], 0);
-
-	mutex_unlock(&hotplug_lock);
+	hotplug_cpu(SUSPENDED_CPUS);
 
 	cancel_delayed_work_sync(&exynos_hotplug);
 }
@@ -538,29 +205,52 @@ static struct power_suspend __refdata powersave_powersuspend = {
 };
 #endif /* (defined(CONFIG_POWERSUSPEND)... */
 
-static DEVICE_ATTR(up_threshold, S_IRUGO | S_IWUSR, show_up_threshold, store_up_threshold);
-static DEVICE_ATTR(down_threshold, S_IRUGO | S_IWUSR, show_down_threshold, store_down_threshold);
-static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
-static DEVICE_ATTR(cpu_up_load, S_IRUGO | S_IWUSR, show_cpu_up_load, store_cpu_up_load);
-static DEVICE_ATTR(cpu_down_load, S_IRUGO | S_IWUSR, show_cpu_down_load, store_cpu_down_load);
-static DEVICE_ATTR(force_hstate, S_IRUGO | S_IWUSR, show_force_hstate, store_force_hstate);
-static DEVICE_ATTR(cur_hstate, S_IRUGO, show_cur_hstate, NULL);
-static DEVICE_ATTR(min_lock, S_IRUGO | S_IWUSR, show_min_lock, store_min_lock);
-static DEVICE_ATTR(max_lock, S_IRUGO | S_IWUSR, show_max_lock, store_max_lock);
+static int __cpuinit set_enabled(const char *val, const struct kernel_param *kp) {
+	int ret, last_val = enabled;
+	unsigned int cpu;
 
-static DEVICE_ATTR(time_in_state, S_IRUGO, show_time_in_state, NULL);
+	cpu = 0;
+
+	ret = param_set_bool(val, kp);
+	
+	if(enabled != last_val)
+	{
+		if (enabled) {
+			queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
+				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+			register_power_suspend(&powersave_powersuspend);
+		} else {
+			cancel_delayed_work_sync(&exynos_hotplug);
+			unregister_power_suspend(&powersave_powersuspend);
+			for_each_present_cpu(cpu) {
+				if (num_online_cpus() >= nr_cpu_ids)
+					break;
+				if (!cpu_online(cpu))
+					cpu_up(cpu);
+			}
+		}
+	}
+	return ret;
+}
+
+static struct kernel_param_ops module_ops = {
+	.set = set_enabled,
+	.get = param_get_bool,
+};
+
+module_param_cb(enabled, &module_ops, &enabled, 0644);
+MODULE_PARM_DESC(enabled, "hotplug/unplug cpu cores based on cpu load");
+
+static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
+static DEVICE_ATTR(min_cpus, S_IRUGO | S_IWUSR, show_min_cpus, store_min_cpus);
+static DEVICE_ATTR(max_cpus, S_IRUGO | S_IWUSR, show_max_cpus, store_max_cpus);
+static DEVICE_ATTR(target_load, S_IRUGO | S_IWUSR, show_target_load, store_target_load);
 
 static struct attribute *clusterhotplug_default_attrs[] = {
-	&dev_attr_up_threshold.attr,
-	&dev_attr_down_threshold.attr,
 	&dev_attr_sampling_rate.attr,
-	&dev_attr_cpu_up_load.attr,
-	&dev_attr_cpu_down_load.attr,
-	&dev_attr_force_hstate.attr,
-	&dev_attr_cur_hstate.attr,
-	&dev_attr_time_in_state.attr,
-	&dev_attr_min_lock.attr,
-	&dev_attr_max_lock.attr,
+	&dev_attr_min_cpus.attr,
+	&dev_attr_max_cpus.attr,
+	&dev_attr_target_load.attr,
 	NULL
 };
 
