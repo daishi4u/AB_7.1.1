@@ -7230,7 +7230,6 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 		j_dbs_info = &per_cpu(cs_cpu_dbs_info, j);
 
-		update_cpu_load_metric(j);
 		cur_idle_time = get_cpu_idle_time(j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) || defined(CPU_IDLE_TIME_IN_CPUFREQ)	/* overrule for sources with backported cpufreq implementation */
 		     &cur_wall_time, 0);
@@ -7284,7 +7283,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		if (unlikely(!wall_time || wall_time < idle_time))
 		    continue;
 
-		load = cpu_get_load(j);	// 100 * (wall_time - idle_time) / wall_time;
+		load = 100 * (wall_time - idle_time) / wall_time;
 #if defined(CONFIG_ARCH_EXYNOS4)
 		if (load > max_load)
 #endif /* CONFIG_ARCH_EXYNOS4 */

@@ -368,8 +368,6 @@ static u64 update_load(int cpu)
 		active_time = delta_time - delta_idle;
 
 	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
-	
-	update_cpu_load_metric(cpu);
 
 	pcpu->time_in_idle = now_idle;
 	pcpu->time_in_idle_timestamp = now;
@@ -420,7 +418,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	spin_lock_irqsave(&pcpu->target_freq_lock, flags);
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
-	cpu_load = cpu_get_loadfreq(data);	//loadadjfreq / pcpu->target_freq;
+	cpu_load = loadadjfreq / pcpu->policy->cur;	
 	boosted = tunables->boost_val || now < tunables->boostpulse_endtime || gpu_get_load() >= gpu_up_load;
 
 #if defined(CONFIG_POWERSUSPEND)
@@ -1435,7 +1433,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		wake_up_process(tunables->speedchange_task);
 
 		mutex_unlock(&gov_lock);
-		
 		break;
 
 	case CPUFREQ_GOV_STOP:
@@ -1456,7 +1453,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->speedchange_task = NULL;
 
 		mutex_unlock(&gov_lock);
-		
 		break;
 
 	case CPUFREQ_GOV_LIMITS:
