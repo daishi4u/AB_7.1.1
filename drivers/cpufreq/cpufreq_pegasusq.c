@@ -31,8 +31,6 @@
 #include <linux/reboot.h>
 #include <linux/powersuspend.h>
 
-#include "cpu_load_metric.h"
-
 /*
  * dbs is used in this file as a shortform for demandbased switching
  * It helps to keep variable names smaller, simpler

@@ -47,7 +47,6 @@
 #if defined(CONFIG_ARM_EXYNOS_MP_CPUFREQ) || defined(CONFIG_ARM_EXYNOS_SMP_CPUFREQ)
 #include <mach/cpufreq.h>
 #endif
-#include "cpu_load_metric.h"
 
 #include <../drivers/gpu/arm/t7xx/r15p0/platform/exynos/mali_kbase_platform.h>
 
