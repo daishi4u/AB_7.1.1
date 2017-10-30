@@ -55,7 +55,6 @@ struct cpufreq_absmartgov_cpuinfo {
 	unsigned int target_freq;
 	unsigned int floor_freq;
 	u64 floor_validate_time;
-	u64 hispeed_validate_time;
 	struct rw_semaphore enable_sem;
 	int governor_enabled;
 };
@@ -67,9 +66,6 @@ static struct task_struct *speedchange_task;
 static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
-
-/* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq;
 
 #define MAX_FREQ			1700000
 static unsigned int max_freq = MAX_FREQ;
@@ -103,17 +99,6 @@ static unsigned long timer_rate = DEFAULT_TIMER_RATE;
 
 /* Busy SDF parameters*/
 #define MIN_BUSY_TIME (100 * USEC_PER_MSEC)
-
-/*
- * Wait this long before raising speed above hispeed, by default a single
- * timer interval.
- */
-#define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
-static unsigned int default_above_hispeed_delay[] = {
-	DEFAULT_ABOVE_HISPEED_DELAY };
-static spinlock_t above_hispeed_delay_lock;
-static unsigned int *above_hispeed_delay = default_above_hispeed_delay;
-static int nabove_hispeed_delay = ARRAY_SIZE(default_above_hispeed_delay);
 
 #if defined(CONFIG_POWERSUSPEND)
 #define DEFAULT_SCREEN_OFF_MAX 1000000
@@ -175,25 +160,6 @@ static void cpufreq_absmartgov_timer_start(int cpu)
 	}
 }
 
-static unsigned int freq_to_above_hispeed_delay(unsigned int freq)
-{
-	int i;
-	unsigned int ret;
-	unsigned long flags;
-
-	spin_lock_irqsave(&above_hispeed_delay_lock, flags);
-
-	for (i = 0; i < nabove_hispeed_delay - 1 &&
-			freq >= above_hispeed_delay[i+1]; i += 2)
-		;
-
-	ret = above_hispeed_delay[i];
-	ret = (ret > (1 * USEC_PER_MSEC)) ? (ret - (1 * USEC_PER_MSEC)) : ret;
-
-	spin_unlock_irqrestore(&above_hispeed_delay_lock, flags);
-	return ret;
-}
-
 /*
  * If increasing frequencies never map to a lower target load then
  * choose_freq() will find the minimum frequency that does not exceed its
@@ -248,14 +214,6 @@ static void cpufreq_absmartgov_timer(unsigned long data)
 
 	new_freq = choose_freq(data);
 
-	if (pcpu->target_freq >= hispeed_freq &&
-	    new_freq > pcpu->target_freq &&
-	    now - pcpu->hispeed_validate_time <
-	    freq_to_above_hispeed_delay(pcpu->target_freq)) {
-		goto rearm;
-	}
-
-	pcpu->hispeed_validate_time = now;
 
 	if (cpufreq_frequency_table_target(pcpu->policy, pcpu->freq_table,
 					   new_freq, CPUFREQ_RELATION_L,
@@ -277,19 +235,6 @@ static void cpufreq_absmartgov_timer(unsigned long data)
 		if (now - pcpu->floor_validate_time < mod_min_sample_time) {
 			goto rearm;
 		}
-	}
-
-	/*
-	 * Update the timestamp for checking whether speed has been held at
-	 * or above the selected frequency for a minimum of min_sample_time,
-	 * if not boosted to hispeed_freq.  If boosted to hispeed_freq then we
-	 * allow the speed to drop as soon as the boostpulse duration expires
-	 * (or the indefinite boost is turned off).
-	 */
-
-	if (new_freq > hispeed_freq) {
-		pcpu->floor_freq = new_freq;
-		pcpu->floor_validate_time = now;
 	}
 
 	if (pcpu->target_freq == new_freq) {
@@ -350,17 +295,8 @@ static void cpufreq_absmartgov_idle_start(void)
 		 * min indefinitely.  This should probably be a quirk of
 		 * the CPUFreq driver.
 		 */
-		if (!pending) {
+		if (!pending)
 			cpufreq_absmartgov_timer_resched(pcpu);
-
-			now = ktime_to_us(ktime_get());
-			if ((pcpu->policy->cur == pcpu->policy->max) &&
-				(now - pcpu->hispeed_validate_time) >
-							MIN_BUSY_TIME) {
-				pcpu->floor_validate_time = now;
-			}
-
-		}
 	}
 exit:
 	up_read(&pcpu->enable_sem);
@@ -611,74 +547,6 @@ static ssize_t store_target_load(struct kobject *kobj,
 static struct global_attr target_load_attr = __ATTR(target_load, 0644,
 		show_target_load, store_target_load);
 
-
-static ssize_t show_above_hispeed_delay(
-	struct kobject *kobj, struct attribute *attr, char *buf)
-{
-	int i;
-	ssize_t ret = 0;
-	unsigned long flags;
-
-	spin_lock_irqsave(&above_hispeed_delay_lock, flags);
-
-	for (i = 0; i < nabove_hispeed_delay; i++)
-		ret += sprintf(buf + ret, "%u%s", above_hispeed_delay[i],
-			       i & 0x1 ? ":" : " ");
-
-	ret += sprintf(buf + (ret - 1), "\n");
-	spin_unlock_irqrestore(&above_hispeed_delay_lock, flags);
-	return ret - 1;
-}
-
-static ssize_t store_above_hispeed_delay(
-	struct kobject *kobj, struct attribute *attr, const char *buf,
-	size_t count)
-{
-	int ntokens;
-	unsigned int *new_above_hispeed_delay = NULL;
-	unsigned long flags;
-
-	new_above_hispeed_delay = get_tokenized_data(buf, &ntokens);
-	if (IS_ERR(new_above_hispeed_delay))
-		return PTR_RET(new_above_hispeed_delay);
-
-	spin_lock_irqsave(&above_hispeed_delay_lock, flags);
-	if (above_hispeed_delay != default_above_hispeed_delay)
-		kfree(above_hispeed_delay);
-	above_hispeed_delay = new_above_hispeed_delay;
-	nabove_hispeed_delay = ntokens;
-	spin_unlock_irqrestore(&above_hispeed_delay_lock, flags);
-	return count;
-
-}
-
-static struct global_attr above_hispeed_delay_attr =
-	__ATTR(above_hispeed_delay, S_IRUGO | S_IWUSR,
-		show_above_hispeed_delay, store_above_hispeed_delay);
-
-static ssize_t show_hispeed_freq(struct kobject *kobj,
-				 struct attribute *attr, char *buf)
-{
-	return sprintf(buf, "%u\n", hispeed_freq);
-}
-
-static ssize_t store_hispeed_freq(struct kobject *kobj,
-				  struct attribute *attr, const char *buf,
-				  size_t count)
-{
-	int ret;
-	long unsigned int val;
-
-	ret = strict_strtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-	hispeed_freq = val;
-	return count;
-}
-
-static struct global_attr hispeed_freq_attr = __ATTR(hispeed_freq, 0644,
-		show_hispeed_freq, store_hispeed_freq);
-
 static ssize_t show_sampling_down_factor(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -774,8 +642,6 @@ static struct attribute *absmartgov_attributes[] = {
 	&min_freq_attr.attr,
 	&max_freq_attr.attr,
 	&target_load_attr.attr,
-	&above_hispeed_delay_attr.attr,
-	&hispeed_freq_attr.attr,
 	&min_sample_time_attr.attr,
 	&timer_rate_attr.attr,
 	&timer_slack.attr,
@@ -825,8 +691,6 @@ static int cpufreq_governor_absmartgov(struct cpufreq_policy *policy,
 
 		freq_table =
 			cpufreq_frequency_get_table(policy->cpu);
-		if (!hispeed_freq)
-			hispeed_freq = policy->max;
 
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
@@ -836,8 +700,6 @@ static int cpufreq_governor_absmartgov(struct cpufreq_policy *policy,
 			pcpu->floor_freq = pcpu->target_freq;
 			pcpu->floor_validate_time =
 				ktime_to_us(ktime_get());
-			pcpu->hispeed_validate_time =
-				pcpu->floor_validate_time;
 			down_write(&pcpu->enable_sem);
 			cpufreq_absmartgov_timer_start(j);
 			pcpu->governor_enabled = 1;
@@ -952,7 +814,6 @@ static int __init cpufreq_absmartgov_init(void)
 	}
 
 	spin_lock_init(&speedchange_cpumask_lock);
-	spin_lock_init(&above_hispeed_delay_lock);
 	mutex_init(&gov_lock);
 	speedchange_task =
 		kthread_create(cpufreq_absmartgov_speedchange_task, NULL,
