@@ -174,7 +174,7 @@ static unsigned int choose_freq(int cpu)
 	
 	freq = min_freq + ((cur_load / target_load) * (max_freq - min_freq));
 	
-	if (freq % ONE_MHZ) {
+	if ((freq % ONE_MHZ) >= 5 * (ONE_MHZ / 10)) {
 		freq = (freq / ONE_MHZ) + 1;
 		freq *= ONE_MHZ;
 	}
