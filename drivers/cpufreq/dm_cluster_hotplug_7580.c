@@ -5,11 +5,12 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/suspend.h>
 #include <linux/pm_qos.h>
 
+#if defined(CONFIG_POWERSUSPEND)
+#include <linux/powersuspend.h>
+#endif
 static struct delayed_work exynos_hotplug;
-static struct delayed_work start_hotplug;
 static struct workqueue_struct *khotplug_wq;
 
 enum hstate {
@@ -48,7 +49,6 @@ struct exynos_hotplug_ctrl {
 	int force_hstate;
 	int cur_hstate;
 	enum hstate old_state;
-	bool suspended;
 	struct hotplug_hstates_usage usage[MAX_HSTATE];
 };
 
@@ -89,8 +89,14 @@ static struct hotplug_hstate hstate_set[] = {
 #endif
 };
 
+#define SUSPENDED_MIN_STATE 	H2
+#define SCREEN_ON_MAX_STATE 	H2
+#define WAKE_UP_STATE			H0
+#define AWAKE_SAMPLING_RATE 	100		// 100ms (Stock)
+#define ASLEEP_SAMPLING_RATE 	1000	// 1s
+
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
-	.sampling_rate = 100,		/* ms */
+	.sampling_rate = AWAKE_SAMPLING_RATE,		/* ms */
 	.down_freq = 800000,		/* MHz */
 	.up_freq = 1300000,		/* MHz */
 	.up_threshold = 3,
@@ -109,7 +115,6 @@ static DEFINE_MUTEX(hotplug_lock);
 static DEFINE_SPINLOCK(hstate_status_lock);
 
 static atomic_t freq_history[STAY] =  {ATOMIC_INIT(0), ATOMIC_INIT(0)};
-static bool lcd_on = true;
 
 /*
  * If 'state' is less than "MAX_STATE"
@@ -125,53 +130,24 @@ static int get_core_count(enum hstate state)
 		return hstate_set[H0].core_count;
 }
 
-static void __ref cluster_down(enum hstate state)
+static void __ref hotplug_cpu(enum hstate state)
 {
-	int i, cnt_old, cnt_target;
+	int i, cnt_target;
 
-	cnt_old = get_core_count(ctrl_hotplug.old_state);
 	cnt_target = get_core_count(state);
 
-	if (cnt_old > cnt_target) {	/* Hotplug out condition */
-		/* Check the Online CPU supposed to be online */
-		for (i = 0 ; i < cnt_target ; i++) {
+	/* Check the Online CPU supposed to be online or offline */
+	for (i = 0 ; i < NR_CPUS ; i++) {
+		if(i < cnt_target)
+		{
 			if (!cpu_online(i))
 				cpu_up(i);
 		}
-		/* Hotplug out the target */
-		for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
+		else
+		{
 			if (cpu_online(i))
 				cpu_down(i);
 		}
-	} else {
-		/* Should not be here */
-		panic("Invalid Condition in cluster down");
-	}
-}
-
-static void __ref cluster_up(enum hstate state)
-{
-	int i, cnt_old, cnt_target;
-
-	cnt_old = get_core_count(ctrl_hotplug.old_state);
-	cnt_target = get_core_count(state);
-
-	if (cnt_old < cnt_target) {	/* Hotplug in condition */
-		/* Turn on the Online CPU supposed to be online
-		 * And target CPU
-		 */
-		for (i = 0 ; i < cnt_target ; i++) {
-			if (!cpu_online(i))
-				cpu_up(i);
-		}
-		/* Check the offline CPU supposed to be offline */
-		for (i = num_possible_cpus() ; i >= cnt_target ; i--) {
-			if (cpu_online(i))
-				cpu_down(i);
-		}
-	} else {
-		/* Should not be here */
-		panic("Invalid Condition in Cluster up");
 	}
 }
 
@@ -197,44 +173,32 @@ static s64 hotplug_update_time_status(void)
 static void hotplug_enter_hstate(bool force, enum hstate state)
 {
 	int min_state, max_state;
-	bool up = false;
-
-	if (ctrl_hotplug.suspended)
-		return;
 
 	if (!force) {
 		min_state = ctrl_hotplug.min_lock;
 		max_state = ctrl_hotplug.max_lock;
 
-#ifndef CONFIG_EXYNOS7580_QUAD
-		if (lcd_on && (state > H1))
-			state = H1;
-#else
-		if (lcd_on)
-			state = H0;
-#endif
-
-		if (min_state >= 0 && state >= min_state)
+		if (min_state >= 0 && state > min_state)
 			state = min_state;
 
-		if (max_state > 0 && state <= max_state)
+		if (max_state > 0 && state < max_state)
 			state = max_state;
 	}
+	
+	// min state when not suspended is SCREEN_ON_MAX_STATE
+	if (!power_suspend_active && state > SCREEN_ON_MAX_STATE)
+		state = SCREEN_ON_MAX_STATE;
+	else if (power_suspend_active && state < SUSPENDED_MIN_STATE)
+		state = SUSPENDED_MIN_STATE;
 
 	if (ctrl_hotplug.old_state == state)
 		return;
-
-	if (ctrl_hotplug.old_state > state)
-		up = true;
 
 	spin_lock(&hstate_status_lock);
 	hotplug_update_time_status();
 	spin_unlock(&hstate_status_lock);
 
-	if (up)
-		cluster_up(state);
-	else
-		cluster_down(state);
+	hotplug_cpu(state);
 
 	atomic_set(&freq_history[UP], 0);
 	atomic_set(&freq_history[DOWN], 0);
@@ -245,43 +209,6 @@ static void hotplug_enter_hstate(bool force, enum hstate state)
 
 	ctrl_hotplug.old_state = state;
 	ctrl_hotplug.cur_hstate = state;
-}
-
-void exynos_dm_hotplug_disable(void)
-{
-	/* Reserved Function */
-}
-
-void exynos_dm_hotplug_enable(void)
-{
-	/* Reserved Function */
-}
-
-void exynos_dc_hotplug_control(int state)
-{
-       if (delayed_work_pending(&exynos_hotplug))
-               cancel_delayed_work_sync(&exynos_hotplug);
-
-       mutex_lock(&hotplug_lock);
-
-       if (state == -1) {
-               ctrl_hotplug.force_hstate = state;
-
-               if (!delayed_work_pending(&exynos_hotplug))
-                       queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-                               msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-       } else {
-               if (delayed_work_pending(&exynos_hotplug))
-                       cancel_delayed_work_sync(&exynos_hotplug);
-
-               if (ctrl_hotplug.old_state > state)
-                       hotplug_enter_hstate(true, state);
-               else
-                       hotplug_enter_hstate(false, state);
-       }
-
-       mutex_unlock(&hotplug_lock);
 }
 
 static enum action select_up_down(void)
@@ -381,16 +308,6 @@ static enum hstate hotplug_adjust_state(enum action move)
 	return state;
 }
 
-static void start_work(struct work_struct *dwork)
-{
-	mutex_lock(&hotplug_lock);
-	ctrl_hotplug.suspended = false;
-	mutex_unlock(&hotplug_lock);
-
-	if (ctrl_hotplug.force_hstate == -1)
-		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-}
-
 static void exynos_work(struct work_struct *dwork)
 {
 	enum action move = select_up_down();
@@ -399,52 +316,24 @@ static void exynos_work(struct work_struct *dwork)
 	mutex_lock(&hotplug_lock);
 
 	target_state = hotplug_adjust_state(move);
-	if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
-		|| (move != STAY))
+		
+	if(power_suspend_active && (ctrl_hotplug.sampling_rate == AWAKE_SAMPLING_RATE)) {
+		hotplug_enter_hstate(false, SUSPENDED_MIN_STATE);
+		
+		ctrl_hotplug.sampling_rate = ASLEEP_SAMPLING_RATE;
+		
+	} else if(!power_suspend_active && (ctrl_hotplug.sampling_rate == ASLEEP_SAMPLING_RATE)) {
+		hotplug_enter_hstate(true, WAKE_UP_STATE);		// just woke up, so give a boost
+		
+		ctrl_hotplug.sampling_rate = AWAKE_SAMPLING_RATE;
+	} else if ((get_core_count(ctrl_hotplug.old_state) != num_online_cpus())
+		|| (move != STAY)) {
 		hotplug_enter_hstate(false, target_state);
+	}
 
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
 }
-
-static int fb_state_change(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank = evdata->data;
-	enum hstate target_state;
-
-	if (event == FB_EVENT_BLANK) {
-		switch (*blank) {
-		case FB_BLANK_POWERDOWN:
-			lcd_on = false;
-			mutex_lock(&hotplug_lock);
-			if (ctrl_hotplug.force_hstate == -1) {
-				target_state = hotplug_adjust_state(DOWN);
-				hotplug_enter_hstate(false, target_state);
-			}
-			mutex_unlock(&hotplug_lock);
-			break;
-		case FB_BLANK_UNBLANK:
-			lcd_on = true;
-			mutex_lock(&hotplug_lock);
-			if (ctrl_hotplug.force_hstate == -1)
-#ifndef CONFIG_EXYNOS7580_QUAD
-				hotplug_enter_hstate(true, H1);
-#else
-				hotplug_enter_hstate(true, H0);
-#endif
-			mutex_unlock(&hotplug_lock);
-			break;
-		}
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block fb_block = {
-	.notifier_call = fb_state_change,
-};
 
 #define define_show_state_function(_name) \
 static ssize_t show_##_name(struct device *dev, struct device_attribute *attr, \
@@ -690,46 +579,11 @@ static struct attribute_group clusterhotplug_attr_group = {
 	.name = "clusterhotplug",
 };
 
-static int exynos_pm_notify(struct notifier_block *nb, unsigned long event,
-	void *dummy)
-{
-	mutex_lock(&hotplug_lock);
-	if (event == PM_SUSPEND_PREPARE) {
-		ctrl_hotplug.suspended = true;
-
-		atomic_set(&freq_history[UP], 0);
-		atomic_set(&freq_history[DOWN], 0);
-
-		mutex_unlock(&hotplug_lock);
-
-		cancel_delayed_work_sync(&exynos_hotplug);
-	} else if (event == PM_POST_SUSPEND) {
-		ctrl_hotplug.suspended = false;
-
-		if (ctrl_hotplug.force_hstate == -1)
-			queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-					msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-		mutex_unlock(&hotplug_lock);
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block exynos_cpu_pm_notifier = {
-	.notifier_call = exynos_pm_notify,
-};
-
 static int __init dm_cluster_hotplug_init(void)
 {
 	int ret;
 
 	INIT_DEFERRABLE_WORK(&exynos_hotplug, exynos_work);
-	INIT_DEFERRABLE_WORK(&start_hotplug, start_work);
-
-	mutex_lock(&hotplug_lock);
-	ctrl_hotplug.suspended = true;
-	mutex_unlock(&hotplug_lock);
 
 	khotplug_wq = alloc_workqueue("khotplug", WQ_FREEZABLE, 0);
 	if (!khotplug_wq) {
@@ -744,26 +598,10 @@ static int __init dm_cluster_hotplug_init(void)
 		goto err_sys;
 	}
 
-	ret = fb_register_client(&fb_block);
-	if (ret) {
-		pr_err("Failed to register fb notifier\n");
-		goto err_fb;
-	}
-
-	ret = register_pm_notifier(&exynos_cpu_pm_notifier);
-	if (ret) {
-		pr_err("Faile to register pm notifier\n");
-		goto err_pm;
-	}
-
-	queue_delayed_work_on(0, khotplug_wq, &start_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
 
 	return 0;
 
-err_pm:
-	fb_unregister_client(&fb_block);
-err_fb:
-	sysfs_remove_group(&cpu_subsys.dev_root->kobj, &clusterhotplug_attr_group);
 err_sys:
 	destroy_workqueue(khotplug_wq);
 err_wq:

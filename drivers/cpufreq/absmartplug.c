@@ -20,13 +20,15 @@ struct exynos_hotplug_ctrl {
 	unsigned int max_cpus;
 	unsigned int min_cpus;
 	unsigned int target_load;
+	unsigned int load_history1;
+	unsigned int load_history2;
 };
 
 #define SUSPENDED_CPUS	 		2
 #define SCREEN_ON_MIN_CPUS	 	2
 #define WAKE_UP_CPUS			NR_CPUS
 #define SAMPLING_RATE 			100		// 100ms (Stock)
-#define TARGET_LOAD				80
+#define TARGET_LOAD				70
 
 static int enabled __read_mostly = 1; // enabled by default
 
@@ -35,6 +37,8 @@ static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.min_cpus = SCREEN_ON_MIN_CPUS,
 	.max_cpus = NR_CPUS,
 	.target_load = TARGET_LOAD,
+	.load_history1 = 100,
+	.load_history2 = 100,
 };
 
 static DEFINE_MUTEX(hotplug_lock);
@@ -81,11 +85,20 @@ static int get_target_cores(void)
 
 	if ((cpu_load * num_online) % ctrl_hotplug.target_load)
 		target_cores++;
+	
+	if (cpu_load > ctrl_hotplug.load_history1 && ctrl_hotplug.load_history1 > ctrl_hotplug.load_history2) {
+			target_cores++;
+	} else if (!(cpu_load < ctrl_hotplug.load_history1 && ctrl_hotplug.load_history1 < ctrl_hotplug.load_history2) && num_online > target_cores) {
+		target_cores = num_online;
+	}
 
 	if (target_cores > max_cpus)
 		target_cores = max_cpus;
 	else if (target_cores < min_cpus)
 		target_cores = min_cpus;
+	
+	ctrl_hotplug.load_history2 = ctrl_hotplug.load_history1;
+	ctrl_hotplug.load_history1 = cpu_load;
 
 	return target_cores;
 }
