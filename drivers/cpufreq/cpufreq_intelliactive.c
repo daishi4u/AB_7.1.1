@@ -661,6 +661,9 @@ static int cpufreq_interactive_speedchange_task(void *data)
 		spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
 
 		for_each_cpu(cpu, &tmp_mask) {
+			unsigned int j;
+			unsigned int max_freq = 0;
+
 			pcpu = &per_cpu(cpuinfo, cpu);
 			if (!down_read_trylock(&pcpu->enable_sem))
 				continue;
@@ -668,15 +671,24 @@ static int cpufreq_interactive_speedchange_task(void *data)
 				up_read(&pcpu->enable_sem);
 				continue;
 			}
+			
+			for_each_cpu(j, pcpu->policy->cpus) {
+				struct cpufreq_interactive_cpuinfo *pjcpu =
+					&per_cpu(cpuinfo, j);
+
+				if (pjcpu->target_freq > max_freq)
+					max_freq = pjcpu->target_freq;
+			}
 
 #if defined(CONFIG_POWERSUSPEND)
 			if (power_suspend_active)
-				if (pcpu->target_freq > screen_off_max) pcpu->target_freq = screen_off_max;
+				if (max_freq > screen_off_max) 
+					max_freq = screen_off_max;
 #endif
 
-			if (pcpu->target_freq != pcpu->policy->cur)
+			if (max_freq != pcpu->policy->cur)
 				__cpufreq_driver_target(pcpu->policy,
-							pcpu->target_freq,
+							max_freq,
 							CPUFREQ_RELATION_H);
 
 			up_read(&pcpu->enable_sem);
