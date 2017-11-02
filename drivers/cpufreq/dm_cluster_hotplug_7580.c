@@ -182,10 +182,10 @@ static int select_cores(void)
 	}
 	else if (atomic_read(&freq_history[DOWN]) > down_threshold) {
 		cores--;
-		
-		if (cores < SUSPENDED_CORES)
-			cores = SUSPENDED_CORES;
 	}
+	
+	if (cores < SUSPENDED_CORES)
+		cores = SUSPENDED_CORES;
 
 	return cores;
 }

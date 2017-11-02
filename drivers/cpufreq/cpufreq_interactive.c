@@ -87,9 +87,6 @@ static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
 
-#if defined(CONFIG_POWERSUSPEND)
-#define SCREEN_OFF_TIMER_RATE ((unsigned long)(60 * USEC_PER_MSEC))
-#endif
 #define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
@@ -401,13 +398,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 	now = update_load(data);
 	delta_time = (unsigned int)(now - pcpu->cputime_speedadj_timestamp);
 	cputime_speedadj = pcpu->cputime_speedadj;
-
-#if defined(CONFIG_POWERSUSPEND)	
-	if (!power_suspend_active)
-		tunables->timer_rate = DEFAULT_TIMER_RATE;
-	else
-		tunables->timer_rate = SCREEN_OFF_TIMER_RATE;
-#endif
 	
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 
@@ -638,8 +628,8 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			}
 
 #if defined(CONFIG_POWERSUSPEND)
-			if (power_suspend_active)
-				if (max_freq > screen_off_max) max_freq = screen_off_max;
+			if (power_suspend_active && max_freq > screen_off_max)
+				max_freq = screen_off_max;
 #endif
 
 			if (max_freq != pcpu->policy->cur)

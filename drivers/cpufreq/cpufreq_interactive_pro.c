@@ -75,11 +75,6 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
-#if defined(CONFIG_POWERSUSPEND)
-/* boolean for determining screen on/off state */
-static bool suspended = false;
-#endif
-
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static unsigned int hispeed_freq;
 
@@ -105,10 +100,6 @@ static unsigned long min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
  */
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
 static unsigned long timer_rate = DEFAULT_TIMER_RATE;
-
-#if defined(CONFIG_POWERSUSPEND)
-#define SCREEN_OFF_TIMER_RATE ((unsigned long)(60 * USEC_PER_MSEC))
-#endif
 
 /*
  * Wait this long before raising speed above hispeed, by default a single
@@ -412,12 +403,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_time = (unsigned int)(now - pcpu->cputime_speedadj_timestamp);
 	cputime_speedadj = pcpu->cputime_speedadj;
 	pcpu->last_evaluated_jiffy = get_jiffies_64();
-#if defined(CONFIG_POWERSUSPEND)	
-	if (suspended == false)
-		timer_rate = DEFAULT_TIMER_RATE;
-	else if (suspended == true)
-		timer_rate = SCREEN_OFF_TIMER_RATE;
-#endif
+
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 
 	if (WARN_ON_ONCE(!delta_time))
@@ -431,7 +417,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	this_hispeed_freq = max(hispeed_freq, pcpu->policy->min);
 
 #if defined(CONFIG_POWERSUSPEND)
-	if ((cpu_load >= go_hispeed_load || boosted) && !suspended) {
+	if ((cpu_load >= go_hispeed_load || boosted) && !power_suspend_active) {
 #else
 	if (cpu_load >= go_hispeed_load || boosted) {
 #endif
@@ -615,9 +601,8 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			}
 
 #if defined(CONFIG_POWERSUSPEND)
-			if (suspended == true)
-				if (max_freq > screen_off_max) 
-					max_freq = screen_off_max;
+			if (power_suspend_active && max_freq > screen_off_max)
+				max_freq = screen_off_max;
 #endif
 
 			if (max_freq != pcpu->policy->cur) {
@@ -1281,26 +1266,6 @@ static void cpufreq_interactive_nop_timer(unsigned long data)
 {
 }
 
-#if defined(CONFIG_POWERSUSPEND)
-static void interactive_early_suspend(struct power_suspend *handler)
-{
-	suspended = true;
-
-	return;
-}
-
-static void interactive_late_resume(struct power_suspend *handler)
-{
-	suspended = false;
-
-	return;
-}
-
-static struct power_suspend interactive_suspend = {
-	.suspend = interactive_early_suspend,
-	.resume = interactive_late_resume,
-};
-#endif
 static int __init cpufreq_interactive_init(void)
 {
 	unsigned int i;
@@ -1319,10 +1284,6 @@ static int __init cpufreq_interactive_init(void)
 		spin_lock_init(&pcpu->target_freq_lock);
 		init_rwsem(&pcpu->enable_sem);
 	}
-
-#if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&interactive_suspend);
-#endif
 
 	spin_lock_init(&target_loads_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
