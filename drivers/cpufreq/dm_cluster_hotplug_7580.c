@@ -44,15 +44,17 @@ struct exynos_hotplug_ctrl {
 #define SUSPENDED_CORES	 		2
 #define WAKE_UP_CORES			NR_CPUS
 #define SAMPLING_RATE 			100		// 100ms (Stock)
-#define CPU_DOWN_LOAD			30		// If load is less than 25 percent then it will turn off cores
-#define CPU_UP_LOAD				80
+#define DUAL_CORE_UP_LOAD		30
+#define QUAD_CORE_DOWN_LOAD		15
+#define QUAD_CORE_UP_LOAD		80
+#define OCTA_CORE_DOWN_LOAD		30
 
 static struct exynos_hotplug_ctrl ctrl_hotplug = {
 	.sampling_rate = SAMPLING_RATE,		/* ms */
 	.up_threshold = 3,
 	.down_threshold = 3,
-	.cpu_up_load = CPU_UP_LOAD,
-	.cpu_down_load = CPU_DOWN_LOAD,
+	.cpu_up_load = QUAD_CORE_UP_LOAD,
+	.cpu_down_load = OCTA_CORE_DOWN_LOAD,
 	.force_hstate = -1,
 	.min_lock = -1,
 	.max_lock = -1,
@@ -153,6 +155,15 @@ static int select_cores(void)
 
 	cores = ctrl_hotplug.cores_online;
 	
+	if (cores < NR_CPUS / 2) {
+		ctrl_hotplug.cpu_up_load = DUAL_CORE_UP_LOAD;
+	} else if (cores == NR_CPUS / 2) {
+		ctrl_hotplug.cpu_up_load = QUAD_CORE_UP_LOAD;
+		ctrl_hotplug.cpu_down_load = QUAD_CORE_DOWN_LOAD;
+	} else {
+		ctrl_hotplug.cpu_down_load = OCTA_CORE_DOWN_LOAD;
+	}
+	
 	for_each_online_cpu(cpu) {
 		update_cpu_load_metric(cpu);
 	}
@@ -178,7 +189,10 @@ static int select_cores(void)
 	}
 	
 	if (atomic_read(&freq_history[UP]) > up_threshold) {
-		cores = NR_CPUS;
+		if (cores < NR_CPUS / 2)
+			cores = NR_CPUS / 2;
+		else
+			cores = NR_CPUS;
 	}
 	else if (atomic_read(&freq_history[DOWN]) > down_threshold) {
 		cores--;
