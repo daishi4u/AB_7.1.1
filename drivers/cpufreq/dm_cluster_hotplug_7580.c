@@ -223,9 +223,6 @@ static void exynos_work(struct work_struct *dwork)
 	if ((ctrl_hotplug.cores_online != num_online)
 			|| (target_cores != num_online))
 		hotplug_enter_hstate(false, target_cores);
-
-	if(delayed_work_pending(&exynos_hotplug))
-		cancel_delayed_work_sync(&exynos_hotplug);
 	
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
