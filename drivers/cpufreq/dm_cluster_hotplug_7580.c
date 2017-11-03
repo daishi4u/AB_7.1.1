@@ -224,6 +224,9 @@ static void exynos_work(struct work_struct *dwork)
 			|| (target_cores != num_online))
 		hotplug_enter_hstate(false, target_cores);
 
+	if(delayed_work_pending(&exynos_hotplug))
+		cancel_delayed_work_sync(&exynos_hotplug);
+	
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
 }
@@ -469,6 +472,11 @@ static void __cpuinit powersave_resume(struct power_suspend *handler)
 	mutex_lock(&hotplug_lock);
 	ctrl_hotplug.sampling_rate = SAMPLING_RATE;
 	hotplug_enter_hstate(true, WAKE_UP_CORES);
+	
+	if(delayed_work_pending(&exynos_hotplug))
+		cancel_delayed_work_sync(&exynos_hotplug);
+	
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
 }
 
@@ -480,7 +488,11 @@ static void __cpuinit powersave_suspend(struct power_suspend *handler)
 
 	atomic_set(&freq_history[UP], 0);
 	atomic_set(&freq_history[DOWN], 0);
-
+	
+	if(delayed_work_pending(&exynos_hotplug))
+		cancel_delayed_work_sync(&exynos_hotplug);
+	
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
 	mutex_unlock(&hotplug_lock);
 }
 
