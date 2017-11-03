@@ -41,7 +41,8 @@ struct exynos_hotplug_ctrl {
 };
 
 
-#define SUSPENDED_CORES	 		2
+#define MIN_CORES				1
+#define SUSPENDED_MAX_CORES	 	2
 #define WAKE_UP_CORES			NR_CPUS
 #define SAMPLING_RATE 			100		// 100ms (Stock)
 #define DUAL_CORE_UP_LOAD		30
@@ -115,8 +116,12 @@ static void hotplug_enter_hstate(bool force, int cores)
 {
 	int min_cores, max_cores;
 
-	if (power_suspend_active && cores > SUSPENDED_CORES)
-		return;
+	if (power_suspend_active) {
+		if (cores > SUSPENDED_MAX_CORES) 
+			return;
+	} else if (cores < SUSPENDED_MAX_CORES) {
+		cores = SUSPENDED_MAX_CORES;
+	}
 
 	if (!force) {
 		min_cores = ctrl_hotplug.min_lock;
@@ -198,8 +203,8 @@ static int select_cores(void)
 		cores--;
 	}
 	
-	if (cores < SUSPENDED_CORES)
-		cores = SUSPENDED_CORES;
+	if (cores < MIN_CORES)
+		cores = MIN_CORES;
 
 	return cores;
 }
@@ -207,6 +212,12 @@ static int select_cores(void)
 static void exynos_work(struct work_struct *dwork)
 {
 	int target_cores, num_online;
+	unsigned int rate_multiplier;
+	
+	if (power_suspend_active)
+		rate_multiplier = 5;
+	else 
+		rate_multiplier = 1;
 	
 	num_online = num_online_cpus();
 
@@ -218,7 +229,7 @@ static void exynos_work(struct work_struct *dwork)
 			|| (target_cores != num_online))
 		hotplug_enter_hstate(false, target_cores);
 
-	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate));
+	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate * rate_multiplier));
 	mutex_unlock(&hotplug_lock);
 }
 
@@ -426,38 +437,6 @@ static ssize_t show_time_in_state(struct device *dev,
 	return len;
 }
 
-#if defined(CONFIG_POWERSUSPEND)
-static void __cpuinit powersave_resume(struct power_suspend *handler)
-{
-	mutex_lock(&hotplug_lock);
-	hotplug_enter_hstate(true, WAKE_UP_CORES);
-
-	if (ctrl_hotplug.force_hstate == -1)
-		queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug,
-				msecs_to_jiffies(ctrl_hotplug.sampling_rate));
-
-	mutex_unlock(&hotplug_lock);
-}
-
-static void __cpuinit powersave_suspend(struct power_suspend *handler)
-{
-	mutex_lock(&hotplug_lock);
-	hotplug_enter_hstate(false, SUSPENDED_CORES);
-
-	atomic_set(&freq_history[UP], 0);
-	atomic_set(&freq_history[DOWN], 0);
-
-	mutex_unlock(&hotplug_lock);
-
-	cancel_delayed_work_sync(&exynos_hotplug);
-}
-
-static struct power_suspend __refdata powersave_powersuspend = {
-	.suspend = powersave_suspend,
-	.resume = powersave_resume,
-};
-#endif /* (defined(CONFIG_POWERSUSPEND)... */
-
 static DEVICE_ATTR(up_threshold, S_IRUGO | S_IWUSR, show_up_threshold, store_up_threshold);
 static DEVICE_ATTR(down_threshold, S_IRUGO | S_IWUSR, show_down_threshold, store_down_threshold);
 static DEVICE_ATTR(sampling_rate, S_IRUGO | S_IWUSR, show_sampling_rate, store_sampling_rate);
@@ -507,10 +486,6 @@ static int __init dm_cluster_hotplug_init(void)
 		pr_err("Failed to create sysfs for hotplug\n");
 		goto err_sys;
 	}
-	
-#if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&powersave_powersuspend);
-#endif
 
 	queue_delayed_work_on(0, khotplug_wq, &exynos_hotplug, msecs_to_jiffies(ctrl_hotplug.sampling_rate) * 250);
 
