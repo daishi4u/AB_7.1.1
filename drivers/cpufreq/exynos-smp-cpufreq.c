@@ -32,10 +32,6 @@
 #include <linux/slab.h>
 #include <linux/pm_qos.h>
 
-#if defined(CONFIG_POWERSUSPEND)
-#include <linux/powersuspend.h>
-#endif
-
 #include <linux/topology.h>
 #include <linux/types.h>
 
@@ -473,9 +469,6 @@ static int exynos_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	mutex_lock(&exynos_cpu_lock);
 
-	if (power_suspend_active)
-		goto out;
-
 	if (target_freq == 0)
 		target_freq = policy->min;
 
@@ -741,9 +734,6 @@ static int __cpuinit exynos_cpufreq_cpu_down_notifier(struct notifier_block *not
 	struct cpumask mask;
 	int cluster;
 
-	if (power_suspend_active)
-		return NOTIFY_OK;
-
 	dev = get_cpu_device(cpu);
 	if (dev) {
 		switch (action) {
@@ -812,9 +802,6 @@ static int exynos_cpufreq_tmu_notifier(struct notifier_block *notifier,
 		return NOTIFY_OK;
 
 	mutex_lock(&exynos_cpu_lock);
-
-	if (power_suspend_active)
-		goto out;
 
 	if (*on)
 		cold_offset = COLD_VOLT_OFFSET;
