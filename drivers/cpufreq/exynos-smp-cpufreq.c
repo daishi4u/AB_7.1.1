@@ -145,7 +145,6 @@ static unsigned int exynos_bus_table[] = {
 
 static unsigned int voltage_tolerance;	/* in percentage */
 static DEFINE_MUTEX(exynos_cpu_lock);
-static bool is_suspended;
 static unsigned int sync_frequency;
 static unsigned int locking_frequency;
 static unsigned int locking_volt;
@@ -474,7 +473,7 @@ static int exynos_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	mutex_lock(&exynos_cpu_lock);
 
-	if (is_suspended)
+	if (power_suspend_active)
 		goto out;
 
 	if (target_freq == 0)
@@ -708,45 +707,6 @@ static int exynos_get_voltage_tolerance(struct device *cpu_dev)
 	return voltage_tolerance;
 }
 
-#if defined(CONFIG_POWERSUSPEND)
-static void __cpuinit powersave_resume(struct power_suspend *handler)
-{
-	mutex_lock(&exynos_cpu_lock);
-	is_suspended = false;
-	mutex_unlock(&exynos_cpu_lock);
-}
-
-static void __cpuinit powersave_suspend(struct power_suspend *handler)
-{
-	int i, ret;
-	
-	mutex_lock(&exynos_cpu_lock);
-	is_suspended = true;
-	mutex_unlock(&exynos_cpu_lock);
-
-	for (i = 0; i < MAX_CLUSTERS; i++) {
-		if (locking_frequency > exynos_cpufreq_get_cluster(i)) {
-			ret = exynos_regulator_set_voltage(i, locking_volt);
-			if (ret < 0) {
-				pr_err("%s: Exynos cpufreq suspend: setting voltage to %d\n",
-						__func__, locking_volt);
-				mutex_lock(&exynos_cpu_lock);
-				is_suspended = false;
-				mutex_unlock(&exynos_cpu_lock);
-
-				break;	// yes, i know that I need to handle the error. will find a way later
-			}
-		}
-
-	}
-}
-
-static struct power_suspend __refdata powersave_powersuspend = {
-  .suspend = powersave_suspend,
-  .resume = powersave_resume,
-};
-#endif /* (defined(CONFIG_POWERSUSPEND)... */
-
 #ifndef CONFIG_EXYNOS7580_QUAD
 static int __cpuinit exynos_cpufreq_cpu_up_notifier(struct notifier_block *notifier,
                                         unsigned long action, void *hcpu)
@@ -781,7 +741,7 @@ static int __cpuinit exynos_cpufreq_cpu_down_notifier(struct notifier_block *not
 	struct cpumask mask;
 	int cluster;
 
-	if (is_suspended)
+	if (power_suspend_active)
 		return NOTIFY_OK;
 
 	dev = get_cpu_device(cpu);
@@ -819,19 +779,12 @@ static int exynos_reboot_notify(struct notifier_block *nb, unsigned long event,
 {
 	int i, ret;
 
-	mutex_lock(&exynos_cpu_lock);
-	is_suspended = true;
-	mutex_unlock(&exynos_cpu_lock);
-
 	for (i = 0; i < MAX_CLUSTERS; i++) {
 		if (locking_frequency > exynos_cpufreq_get_cluster(i)) {
 			ret = exynos_regulator_set_voltage(i, locking_volt);
 			if (ret < 0) {
 				pr_err("%s: Exynos cpufreq reboot: setting voltage to %d\n",
 						__func__, locking_volt);
-				mutex_lock(&exynos_cpu_lock);
-				is_suspended = false;
-				mutex_unlock(&exynos_cpu_lock);
 
 				return NOTIFY_BAD;
 			}
@@ -860,7 +813,7 @@ static int exynos_cpufreq_tmu_notifier(struct notifier_block *notifier,
 
 	mutex_lock(&exynos_cpu_lock);
 
-	if (is_suspended)
+	if (power_suspend_active)
 		goto out;
 
 	if (*on)
@@ -1399,10 +1352,6 @@ static int exynos_smp_probe(struct platform_device *pdev)
 #ifndef CONFIG_EXYNOS7580_QUAD
 	register_hotcpu_notifier(&exynos_cpufreq_cpu_up_nb);
 	register_hotcpu_notifier(&exynos_cpufreq_cpu_down_nb);
-#endif
-
-#if defined(CONFIG_POWERSUSPEND)
-	register_power_suspend(&powersave_powersuspend);
 #endif
 
 	return ret;
