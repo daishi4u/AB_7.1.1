@@ -378,8 +378,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	for_each_cpu(j, policy->cpus) {
 		struct cpu_dbs_info_s *j_dbs_info;
 		u64 cur_wall_time, cur_idle_time, cur_iowait_time;
-		u64 prev_wall_time, prev_idle_time, prev_iowait_time;
-		unsigned int idle_time, wall_time, iowait_time;
+		u64 prev_wall_time, prev_idle_time, prev_iowait_time, idle_time, wall_time, iowait_time;
 		unsigned int load, load_freq;
 		int freq_avg;
 
@@ -391,16 +390,13 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		cur_idle_time = get_cpu_idle_time(j, &cur_wall_time, dbs_tuners_ins.io_is_busy);
 		cur_iowait_time = get_cpu_iowait_time(j, &cur_wall_time);
 
-		wall_time = (unsigned int)
-				(cur_wall_time - prev_wall_time);
+		wall_time = cur_wall_time - prev_wall_time;
 		j_dbs_info->prev_cpu_wall = cur_wall_time;
 
-		idle_time = (unsigned int)
-				(cur_idle_time - prev_idle_time);
+		idle_time = cur_idle_time - prev_idle_time;
 		j_dbs_info->prev_cpu_idle = cur_idle_time;
 
-		iowait_time = (unsigned int)
-				(cur_iowait_time - prev_iowait_time);
+		iowait_time = cur_iowait_time - prev_iowait_time;
 		j_dbs_info->prev_cpu_iowait = cur_iowait_time;
 
 		if (dbs_tuners_ins.ignore_nice) {
@@ -426,7 +422,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		if (unlikely(!wall_time || wall_time < idle_time))
 			continue;
 
-		load = 100 * (wall_time - idle_time) / wall_time;
+		load = (unsigned int)(100 * (wall_time - idle_time) / wall_time);
 
 		freq_avg = __cpufreq_driver_getavg(policy, j);
 		if (freq_avg <= 0)
@@ -681,4 +677,3 @@ fs_initcall(cpufreq_gov_dbs_init);
 #else
 module_init(cpufreq_gov_dbs_init);
 #endif
-module_exit(cpufreq_gov_dbs_exit);

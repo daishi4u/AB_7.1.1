@@ -353,15 +353,11 @@ static unsigned int choose_freq(
 static u64 update_load(int cpu)
 {
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
-	u64 now;
-	u64 now_idle;
-	unsigned int delta_idle;
-	unsigned int delta_time;
-	u64 active_time;
+	u64 now, now_idle, delta_idle, delta_time, active_time;
 
 	now_idle = get_cpu_idle_time(cpu, &now, io_is_busy);
-	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
-	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
+	delta_idle = now_idle - pcpu->time_in_idle;
+	delta_time = now - pcpu->time_in_idle_timestamp;
 
 	if (delta_time <= delta_idle)
 		active_time = 0;
@@ -377,8 +373,7 @@ static u64 update_load(int cpu)
 
 static void cpufreq_interactive_timer(unsigned long data)
 {
-	u64 now;
-	unsigned int delta_time;
+	u64 now, delta_time;
 	u64 cputime_speedadj;
 	int cpu_load;
 	struct cpufreq_interactive_cpuinfo *pcpu =
@@ -406,7 +401,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	now = update_load(data);
-	delta_time = (unsigned int)(now - pcpu->cputime_speedadj_timestamp);
+	delta_time = now - pcpu->cputime_speedadj_timestamp;
 	cputime_speedadj = pcpu->cputime_speedadj;
 	
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);

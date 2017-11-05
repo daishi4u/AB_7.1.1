@@ -91,8 +91,8 @@ struct cpu_dbs_info_s {
     unsigned int rate_mult;
     int cpu;
     unsigned int sample_type:1;
-    unsigned long long prev_idletime;
-    unsigned long long prev_idleusage;
+    cputime64_t prev_idletime;
+    cputime64_t prev_idleusage;
     /*
      * percpu mutex that serializes governor limit change with
      * do_dbs_timer invocation. We do not want do_dbs_timer to run
@@ -423,7 +423,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
     struct cpufreq_policy *policy;
     unsigned int j;
 
-    unsigned long total_idletime, total_usage;
+    cputime64_t total_idletime, total_usage;
 
     this_dbs_info->freq_lo = 0;
     policy = this_dbs_info->cur_policy;
@@ -447,8 +447,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
     for_each_cpu(j, policy->cpus) {
 	struct cpu_dbs_info_s *j_dbs_info;
-	cputime64_t cur_wall_time, cur_idle_time, cur_iowait_time;
-	unsigned int idle_time, wall_time, iowait_time;
+	cputime64_t cur_wall_time, cur_idle_time, cur_iowait_time, idle_time, wall_time, iowait_time;
 	unsigned int load, load_freq;
 	int freq_avg;
 	struct cpuidle_device * j_cpuidle_dev = NULL;
@@ -460,13 +459,13 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	cur_idle_time = get_cpu_idle_time(j, &cur_wall_time, dbs_tuners_ins.io_is_busy);
 	cur_iowait_time = get_cpu_iowait_time(j, &cur_wall_time);
 
-	wall_time = (unsigned int) (cur_wall_time - j_dbs_info->prev_cpu_wall);
+	wall_time = cur_wall_time - j_dbs_info->prev_cpu_wall;
 	j_dbs_info->prev_cpu_wall = cur_wall_time;
 
-	idle_time = (unsigned int) (cur_idle_time - j_dbs_info->prev_cpu_idle);
+	idle_time = cur_idle_time - j_dbs_info->prev_cpu_idle;
 	j_dbs_info->prev_cpu_idle = cur_idle_time;
 
-	iowait_time = (unsigned int) (cur_iowait_time - j_dbs_info->prev_cpu_iowait);
+	iowait_time = cur_iowait_time - j_dbs_info->prev_cpu_iowait;
 	j_dbs_info->prev_cpu_iowait = cur_iowait_time;
 
 	if (dbs_tuners_ins.ignore_nice) {
@@ -483,7 +482,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		cputime64_to_jiffies64(cur_nice);
 
 	    j_dbs_info->prev_cpu_nice = kcpustat_cpu(j).cpustat[CPUTIME_NICE];
-	    idle_time += jiffies_to_usecs(cur_nice_jiffies);
+	    idle_time += (cputime64_t)(jiffies_to_usecs(cur_nice_jiffies));
 	}
 
 	/*
@@ -499,7 +498,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	if (unlikely(!wall_time || wall_time < idle_time))
 	    continue;
 
-	load = 100 * (wall_time - idle_time) / wall_time;
+	load = (unsigned int)(100 * (wall_time - idle_time) / wall_time);
 
 	freq_avg = __cpufreq_driver_getavg(policy, j);
 	if (freq_avg <= 0)
@@ -519,8 +518,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	    deepidle_time = deepidle_state->time;
 	    deepidle_usage = deepidle_state->usage;
 		    
-	    total_idletime += (unsigned long)(deepidle_time - j_dbs_info->prev_idletime);
-	    total_usage += (unsigned long)(deepidle_usage - j_dbs_info->prev_idleusage);
+	    total_idletime += deepidle_time - j_dbs_info->prev_idletime;
+	    total_usage += deepidle_usage - j_dbs_info->prev_idleusage;
 
 	    j_dbs_info->prev_idletime = deepidle_time;
 	    j_dbs_info->prev_idleusage = deepidle_usage;
