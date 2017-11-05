@@ -55,7 +55,7 @@ void update_cpu_metric_f(int cpu, u64 now, u64 delta_idle, u64 delta_time,
 	if (delta_time <= delta_idle)
 		load = 0;
 	else
-		load = div64_u64((100 * (delta_time - delta_idle)), delta_time);
+		load = (unsigned int)(div64_u64((100 * (delta_time - delta_idle)), delta_time));
 
 	pcpuload->load = load;
 	pcpuload->frequency = freq;
@@ -74,12 +74,11 @@ void update_cpu_metric(int cpu, u64 now, u64 delta_idle, u64 delta_time,
 u64 update_cpu_load_metric(int cpu)
 {
 	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
-	u64 now, now_idle;
-	unsigned int delta_idle, delta_time;
+	u64 now, now_idle, delta_idle, delta_time;
 
 	now_idle = get_cpu_idle_time_us(cpu, &now);
-	delta_idle = (unsigned int)(now_idle - pcpuload->prev_idle_time);
-	delta_time = (unsigned int)(now - pcpuload->prev_idle_timestamp);
+	delta_idle = now_idle - pcpuload->prev_idle_time;
+	delta_time = now - pcpuload->prev_idle_timestamp;
 	
 	update_cpu_metric_f(cpu, now, delta_idle, delta_time, cpufreq_quick_get(cpu));
 
@@ -112,7 +111,7 @@ unsigned int cpu_get_load(int cpu)
 
 unsigned int cpu_get_loadfreq(int cpu)
 {
-	int load, freq;
+	unsigned int load, freq;
 	struct cpu_load *pcpuload = &per_cpu(cpuload, cpu);
 	
 	load = pcpuload->load;
