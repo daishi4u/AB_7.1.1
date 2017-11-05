@@ -52,15 +52,6 @@ enum HBM {
 	HBM_MAX
 };
 
-enum COLOR_OFFSET_FUNC {
-	COLOR_OFFSET_FUNC_NONE,
-	COLOR_OFFSET_FUNC_F1,
-	COLOR_OFFSET_FUNC_F2,
-	COLOR_OFFSET_FUNC_F3,
-	COLOR_OFFSET_FUNC_F4,
-	COLOR_OFFSET_FUNC_MAX
-};
-
 enum hmt_mode {
 	HMT_MDNIE_OFF,
 	HMT_MDNIE_ON,
@@ -85,10 +76,10 @@ struct mdnie_table {
 
 struct mdnie_scr_info {
 	u32 index;
-	u32 cr;
-	u32 wr;
-	u32 wg;
-	u32 wb;
+	u32 color_blind;	/* Cyan Red */
+	u32 white_r;
+	u32 white_g;
+	u32 white_b;
 };
 
 struct mdnie_tune {
@@ -102,14 +93,9 @@ struct mdnie_tune {
 	struct mdnie_scr_info	*scr_info;
 	unsigned char **coordinate_table;
 	unsigned char **adjust_ldu_table;
+	unsigned int max_adjust_ldu;
 	int (*get_hbm_index)(int);
 	int (*color_offset[])(int, int);
-};
-
-struct rgb_info {
-	int r;
-	int g;
-	int b;
 };
 
 struct mdnie_ops {
@@ -139,7 +125,6 @@ struct mdnie_info {
 	unsigned int		tuning;
 	unsigned int		accessibility;
 	unsigned int		color_correction;
-	unsigned int		coordinate[2];
 
 	char			path[50];
 
@@ -149,10 +134,12 @@ struct mdnie_info {
 
 	struct notifier_block	fb_notif;
 
-	struct rgb_info		wrgb_current;
-
+	unsigned int white_r;
+	unsigned int white_g;
+	unsigned int white_b;
 	struct mdnie_table table_buffer;
 	mdnie_t sequence_buffer[256];
+	unsigned int coordinate[2];
 };
 
 extern int mdnie_calibration(int *r);
