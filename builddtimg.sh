@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KERNELDIR=/home/brett/j7elte/j7nougatkernel/abnougat
+KERNELDIR=/home/brett/j7elte/ab7.1.1
 MYOUT=$KERNELDIR/arch/arm64/boot
 ABDIR=$KERNELDIR/afterburner
 MYTOOLS=$ABDIR/mkdtbhbootimg/bin
